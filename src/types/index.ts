@@ -73,6 +73,7 @@ export interface ScraperSettings {
   maxRequestsPerHour: number;
   maxRequestsPerDay: number;
   cooldownMinutes: number;
+  browserRecycleScrapes: number;
   circuitBreakerUntil: string | null;
   circuitBreakerReason: string | null;
   globalPaused: number;
@@ -89,6 +90,7 @@ export interface PublicScraperSettings {
   maxRequestsPerHour: number;
   maxRequestsPerDay: number;
   cooldownMinutes: number;
+  browserRecycleScrapes: number;
   circuitBreakerActive: boolean;
   circuitBreakerUntil: string | null;
   circuitBreakerReason: string | null;

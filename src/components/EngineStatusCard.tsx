@@ -14,12 +14,17 @@ import type { PublicScraperSettings, UsageQuotaStats } from '@/types';
 interface EngineStatusCardProps {
   settings: PublicScraperSettings;
   usage: UsageQuotaStats;
+  browserStats?: {
+    active: boolean;
+    scrapesSinceLaunch: number;
+  };
   onSettingsUpdated: (settings: PublicScraperSettings) => void;
 }
 
 export function EngineStatusCard({
   settings,
   usage,
+  browserStats,
   onSettingsUpdated,
 }: EngineStatusCardProps) {
   const [resetting, setResetting] = useState(false);
@@ -269,7 +274,16 @@ export function EngineStatusCard({
         <div
           className={`p-3.5 rounded-lg bg-gunmetal-canvas border transition-colors ${engineCardBorder}`}
         >
-          <div className="text-xs text-gunmetal-muted">Chromium Engine</div>
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="text-gunmetal-muted">Chromium Engine</span>
+            <span
+              title="Scrapes executed in current Chromium session before automatic recycle"
+              className="font-mono text-slate-300"
+            >
+              {browserStats?.scrapesSinceLaunch ?? 0} /{' '}
+              {settings.browserRecycleScrapes} scrapes
+            </span>
+          </div>
           <div className="mt-1 flex items-center justify-between gap-2">
             <span
               className={`inline-flex items-center gap-2 text-sm font-semibold ${engineStatusTextColor}`}

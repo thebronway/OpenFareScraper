@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS settings (
     maxRequestsPerHour INTEGER NOT NULL DEFAULT 20,
     maxRequestsPerDay INTEGER NOT NULL DEFAULT 150,
     cooldownMinutes INTEGER NOT NULL DEFAULT 60,
+    browserRecycleScrapes INTEGER NOT NULL DEFAULT 100,
     circuitBreakerUntil TEXT,
     circuitBreakerReason TEXT,
     globalPaused INTEGER NOT NULL DEFAULT 0,

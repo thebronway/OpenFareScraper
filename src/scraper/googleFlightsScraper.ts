@@ -3,7 +3,11 @@ import { insertScrapeLog } from '@/db/logs';
 import { getSettings } from '@/db/settings';
 import type { ScrapeRequest, ScrapeResponse } from '@/types';
 import { formatLocationDisplay } from '@/utils/coLocations';
-import { openIsolatedGooglePage } from './browserManager';
+import { supportsBasicEconomyExclusion } from '@/utils/northAmericaAirports';
+import {
+  openIsolatedGooglePage,
+  recordBrowserScrape,
+} from './browserManager';
 import {
   applyScrapeFilters,
   extractDs1JsonFromHtml,
@@ -15,11 +19,15 @@ import {
   checkPreScrapeAllowance,
   inspectForUpstreamBlock,
 } from './rateLimiter';
+import {
+  ensureStandardEconomyFilterActive,
+  isStandardEconomyActiveInDom,
+} from './fareTierGuard';
 import { inspectShoppingResponse } from './shoppingTokenInspector';
 import { buildGoogleFlightsUrl } from './urlBuilder';
 
 const HARD_SCRAPE_TIMEOUT_MS = 30_000;
-const POST_FILTER_WAIT_TIMEOUT_MS = 10_000;
+const POST_FILTER_WAIT_TIMEOUT_MS = 3_500;
 const MAX_RAW_PAYLOAD_BYTES = 50 * 1024; // 50 KB cap
 
 export interface ScrapeExecutionResult {
@@ -134,7 +142,6 @@ async function performBrowserScrape(
     const allShoppingPayloads: string[] = [];
     const otherDataPayloads: string[] = [];
     let sawUnfilteredShopping = false;
-    let initialUnfilteredSignature: string | null = null;
     let resolvePostFilter: (() => void) | null = null;
 
     const postFilterReadyPromise = new Promise<void>((resolve) => {
@@ -186,28 +193,10 @@ async function performBrowserScrape(
           return;
         }
 
-        if (inspection.isBaselineUnfilteredEconomy) {
-          sawUnfilteredShopping = true;
-          if (!initialUnfilteredSignature) {
-            initialUnfilteredSignature = inspection.filterSignature;
-          }
-          return;
-        }
-
-        if (
-          sawUnfilteredShopping &&
-          (!inspection.hasValidQueryToken ||
-            inspection.filterSignature !== initialUnfilteredSignature)
-        ) {
-          postFilterShoppingPayloads.push(bodyText);
-          resolvePostFilter?.();
-          return;
-        }
-
-        if (!inspection.hasValidQueryToken) {
-          postFilterShoppingPayloads.push(bodyText);
-          resolvePostFilter?.();
-        }
+        // Reject any GetShoppingResults payload that does not explicitly confirm
+        // Basic Economy exclusion (including baseline unfiltered responses and
+        // secondary pagination/refresh RPCs without exclusion tokens).
+        sawUnfilteredShopping = true;
       } catch {
         // Ignore streaming or aborted responses
       }
@@ -225,78 +214,95 @@ async function performBrowserScrape(
       await dismissConsentIfPresent(activePage);
 
       await activePage
-        .waitForLoadState('networkidle', { timeout: 12_000 })
+        .waitForLoadState('networkidle', { timeout: 6_000 })
         .catch(() => null);
 
       await activePage.waitForTimeout(settings.settleDelayMs);
 
-      if (
-        enforceBasicExclusion &&
-        postFilterShoppingPayloads.length === 0 &&
-        sawUnfilteredShopping
-      ) {
-        await Promise.race([
-          postFilterReadyPromise,
-          activePage.waitForTimeout(POST_FILTER_WAIT_TIMEOUT_MS),
-        ]);
-      }
+      let html = await activePage.content();
+      let ds1Payload = extractDs1JsonFromHtml(html);
 
-      const html = await activePage.content();
-      const ds1Payload = extractDs1JsonFromHtml(html);
-
-      let structuredCandidates: string[] = [];
-      let rawDiagnosticPayloads: string[] = [];
-
-      if (enforceBasicExclusion) {
-        if (postFilterShoppingPayloads.length > 0) {
-          const latestFiltered =
-            postFilterShoppingPayloads[postFilterShoppingPayloads.length - 1];
-          structuredCandidates = [latestFiltered];
-          rawDiagnosticPayloads = [latestFiltered];
-        } else if (sawUnfilteredShopping) {
-          // Pre-filter GetShoppingResults fired, but post-filter XHR did not arrive;
-          // fall back to SSR ds:1 (which already carries the tfs excludeBasicEconomy flag) if available.
-          if (ds1Payload) {
-            structuredCandidates = [ds1Payload];
+      // Fast path (~4s): SSR ds:1 came directly from the excludeBasicEconomy URL,
+      // and verified post-filter GetShoppingResults XHRs already carry explicit exclusion.
+      // Never parse unverified allShoppingPayloads when enforceBasicExclusion is true.
+      const buildCandidates = (
+        filteredXhrs: string[],
+        currentDs1: string | null
+      ) => {
+        if (enforceBasicExclusion) {
+          if (filteredXhrs.length > 0) {
+            const latestFiltered = filteredXhrs[filteredXhrs.length - 1];
+            return {
+              structured: [latestFiltered],
+              diagnostic: [latestFiltered],
+            };
           }
-          rawDiagnosticPayloads = [
-            ...(ds1Payload ? [ds1Payload] : []),
-            ...allShoppingPayloads,
-            ...otherDataPayloads,
-          ];
-        } else {
-          if (ds1Payload) {
-            structuredCandidates.push(ds1Payload);
+          const structured: string[] = [];
+          if (currentDs1) {
+            structured.push(currentDs1);
           }
-          structuredCandidates.push(...otherDataPayloads);
-          rawDiagnosticPayloads = [...structuredCandidates];
+          structured.push(...otherDataPayloads);
+          return {
+            structured,
+            diagnostic: [
+              ...structured,
+              ...allShoppingPayloads,
+            ],
+          };
         }
-      } else {
+
         if (allShoppingPayloads.length > 0) {
           const latestShopping =
             allShoppingPayloads[allShoppingPayloads.length - 1];
-          structuredCandidates = [latestShopping];
-          rawDiagnosticPayloads = [latestShopping];
-        } else {
-          if (ds1Payload) {
-            structuredCandidates.push(ds1Payload);
-          }
-          structuredCandidates.push(...otherDataPayloads);
-          rawDiagnosticPayloads = [...structuredCandidates];
+          return {
+            structured: [latestShopping],
+            diagnostic: [latestShopping],
+          };
         }
-      }
+        const structured: string[] = [];
+        if (currentDs1) {
+          structured.push(currentDs1);
+        }
+        structured.push(...otherDataPayloads);
+        return { structured, diagnostic: [...structured] };
+      };
+
+      let { structured: structuredCandidates, diagnostic: rawDiagnosticPayloads } =
+        buildCandidates(postFilterShoppingPayloads, ds1Payload);
 
       let extracted = parseStructuredPayload(structuredCandidates, req);
 
+      // Slow-hydration recovery: only if SSR ds:1 yielded 0 itineraries and no verified
+      // post-filter XHR has arrived yet, verify/activate the UI filter and wait briefly.
       if (
+        enforceBasicExclusion &&
         extracted.length === 0 &&
-        !(
-          enforceBasicExclusion &&
-          sawUnfilteredShopping &&
-          postFilterShoppingPayloads.length === 0
-        )
+        postFilterShoppingPayloads.length === 0
       ) {
-        extracted = await parseItinerariesFromDom(activePage, req);
+        const uiActivated =
+          await ensureStandardEconomyFilterActive(activePage);
+        if (sawUnfilteredShopping || uiActivated) {
+          await Promise.race([
+            postFilterReadyPromise,
+            activePage.waitForTimeout(POST_FILTER_WAIT_TIMEOUT_MS),
+          ]);
+          html = await activePage.content();
+          ds1Payload = extractDs1JsonFromHtml(html);
+          const rebuilt = buildCandidates(postFilterShoppingPayloads, ds1Payload);
+          structuredCandidates = rebuilt.structured;
+          rawDiagnosticPayloads = rebuilt.diagnostic;
+          extracted = parseStructuredPayload(structuredCandidates, req);
+        }
+      }
+
+      if (extracted.length === 0) {
+        const domAllowed =
+          !enforceBasicExclusion ||
+          postFilterShoppingPayloads.length > 0 ||
+          (await isStandardEconomyActiveInDom(activePage));
+        if (domAllowed) {
+          extracted = await parseItinerariesFromDom(activePage, req);
+        }
       }
 
       return {
@@ -367,12 +373,14 @@ async function performBrowserScrape(
       return { httpStatus: 429, response };
     }
 
-    // Google Flights only supports "Economy (exclude Basic)" on North American/US-territory routes;
-    // fall back to standard Economy if an international route returns 0 results with excludeBasic enabled.
+    // Google Flights natively supports "Economy (exclude Basic)" on US, US-territory, and Canadian routes.
+    // Only run a fallback navigation on routes outside US/US-territories/Canada where Google does not
+    // support excludeBasicEconomy and returned 0 results on the primary attempt.
     if (
       itineraries.length === 0 &&
       req.cabinClass === 'economy' &&
-      req.fareTier === 'Standard'
+      req.fareTier === 'Standard' &&
+      !supportsBasicEconomyExclusion(req.origin, req.destination)
     ) {
       const fallbackUrl = buildGoogleFlightsUrl(req, {
         excludeBasicEconomy: false,
@@ -553,6 +561,7 @@ async function performBrowserScrape(
   } finally {
     if (page) {
       await page.close().catch(() => null);
+      recordBrowserScrape();
     }
   }
 }

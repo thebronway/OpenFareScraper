@@ -46,6 +46,12 @@ export function initializeDatabase(database: Database.Database): void {
     );
   }
 
+  if (!settingsColumns.some((col) => col.name === 'browserRecycleScrapes')) {
+    database.exec(
+      `ALTER TABLE settings ADD COLUMN browserRecycleScrapes INTEGER NOT NULL DEFAULT 100;`
+    );
+  }
+
   const existing = database
     .prepare('SELECT id FROM settings WHERE id = 1')
     .get() as { id: number } | undefined;
@@ -72,13 +78,14 @@ export function initializeDatabase(database: Database.Database): void {
           maxRequestsPerHour,
           maxRequestsPerDay,
           cooldownMinutes,
+          browserRecycleScrapes,
           circuitBreakerUntil,
           circuitBreakerReason,
           globalPaused,
           globalPausedAt,
           proxyUrl,
           updatedAt
-        ) VALUES (1, ?, ?, 4000, 9000, 2500, 20, 150, 60, NULL, NULL, 0, NULL, NULL, ?)`
+        ) VALUES (1, ?, ?, 4000, 9000, 2500, 20, 150, 60, 100, NULL, NULL, 0, NULL, NULL, ?)`
       )
       .run(adminPasswordHash, sessionSecret, now);
   }

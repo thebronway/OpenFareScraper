@@ -23,6 +23,13 @@ export default function HomePage() {
   const [hasAdminPassword, setHasAdminPassword] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [settings, setSettings] = useState<PublicScraperSettings | null>(null);
+  const [browserStats, setBrowserStats] = useState<{
+    active: boolean;
+    scrapesSinceLaunch: number;
+  }>({
+    active: false,
+    scrapesSinceLaunch: 0,
+  });
   const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
   const [overallUsage, setOverallUsage] = useState<OverallApiKeyUsage>({
     last1h: 0,
@@ -58,6 +65,9 @@ export default function HomePage() {
     if (settingsRes.ok) {
       const settingsData = await settingsRes.json();
       setSettings(settingsData.settings);
+      if (settingsData.browserStats) {
+        setBrowserStats(settingsData.browserStats);
+      }
     }
     if (keysRes.ok) {
       const keysData = await keysRes.json();
@@ -163,6 +173,7 @@ export default function HomePage() {
               hourlyLimit: settings.maxRequestsPerHour,
               dailyLimit: settings.maxRequestsPerDay,
             }}
+            browserStats={browserStats}
             onSettingsUpdated={setSettings}
           />
 

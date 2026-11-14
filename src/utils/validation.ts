@@ -81,6 +81,7 @@ export const updateSettingsSchema = z
     maxRequestsPerHour: z.number().int().min(1).max(500),
     maxRequestsPerDay: z.number().int().min(1).max(5000),
     cooldownMinutes: z.number().int().min(1).max(1440),
+    browserRecycleScrapes: z.number().int().min(10).max(1000).default(100),
     proxyUrl: z
       .string()
       .trim()

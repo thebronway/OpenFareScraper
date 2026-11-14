@@ -1,9 +1,16 @@
 # FlightSentry-Scraper Changelog
 
 *Last updated: 2026-11-14*  
-*Current Version: v0.4.1*
+*Current Version: v0.4.2*
 
 ## Changelog
+
+### Release v0.4.2
+- Tightened `shoppingTokenInspector.ts` and `googleFlightsScraper.ts` so `Standard` economy scrapes only accept `GetShoppingResults` responses with explicit Basic Economy exclusion while preserving SSR `ds:1` results.
+- Restricted unfiltered `Economy` fallback in `googleFlightsScraper.ts` via `northAmericaAirports.ts` to routes outside the US, US territories (PR, VI, AS), and Canada.
+- Added `fareTierGuard.ts` to verify rendered `exclude Basic` UI state and filter Basic Economy DOM cards when `fareTier` is `Standard`.
+- Added configurable automatic Chromium browser-context recycling after `N` scrapes (`browserRecycleScrapes`, default `100`) in `browserManager.ts` and `settings`.
+- Displayed the active Chromium session scrape counter (`X / Y scrapes`) in `EngineStatusCard.tsx` and arranged guardrail inputs into a two-row grid.
 
 ### Release v0.4.1
 - Hardened `normalizeAirlineCode` to block prose fallbacks (e.g. `"Unknown"` to `"UN"`, `"IATA..."` to `"IA"`) that surfaced as low-priced phantom flights.

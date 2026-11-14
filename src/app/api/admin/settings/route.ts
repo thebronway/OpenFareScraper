@@ -6,6 +6,7 @@ import {
   updateAdminPassword,
   updateGuardrails,
 } from '@/db/settings';
+import { getBrowserSessionStats } from '@/scraper/browserManager';
 import {
   attachSessionCookie,
   hashPassword,
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     settings: getPublicSettings(),
+    browserStats: getBrowserSessionStats(),
   });
 }
 
@@ -77,12 +79,14 @@ export async function PUT(req: NextRequest) {
     maxRequestsPerHour: data.maxRequestsPerHour,
     maxRequestsPerDay: data.maxRequestsPerDay,
     cooldownMinutes: data.cooldownMinutes,
+    browserRecycleScrapes: data.browserRecycleScrapes,
     proxyUrl: data.proxyUrl,
   });
 
   const res = NextResponse.json({
     ok: true,
     settings: getPublicSettings(),
+    browserStats: getBrowserSessionStats(),
   });
 
   if (rotatedSecret) {

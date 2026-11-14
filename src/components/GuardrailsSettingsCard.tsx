@@ -25,6 +25,7 @@ function extractGuardrails(settings: PublicScraperSettings): GuardrailValues {
     maxRequestsPerHour: settings.maxRequestsPerHour,
     maxRequestsPerDay: settings.maxRequestsPerDay,
     cooldownMinutes: settings.cooldownMinutes,
+    browserRecycleScrapes: settings.browserRecycleScrapes,
   };
 }
 
@@ -81,6 +82,7 @@ export function GuardrailsSettingsCard({
         maxRequestsPerHour: Number(values.maxRequestsPerHour),
         maxRequestsPerDay: Number(values.maxRequestsPerDay),
         cooldownMinutes: Number(values.cooldownMinutes),
+        browserRecycleScrapes: Number(values.browserRecycleScrapes),
       };
 
       if (clearProxy) {

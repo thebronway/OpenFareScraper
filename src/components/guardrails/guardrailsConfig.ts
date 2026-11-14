@@ -5,6 +5,7 @@ export const DEFAULT_GUARDRAILS = {
   maxRequestsPerHour: 20,
   maxRequestsPerDay: 150,
   cooldownMinutes: 60,
+  browserRecycleScrapes: 100,
 } as const;
 
 export interface GuardrailValues {
@@ -14,6 +15,7 @@ export interface GuardrailValues {
   maxRequestsPerHour: number;
   maxRequestsPerDay: number;
   cooldownMinutes: number;
+  browserRecycleScrapes: number;
 }
 
 export interface GuardrailFieldMeta {
@@ -79,5 +81,14 @@ export const GUARDRAIL_FIELDS: readonly GuardrailFieldMeta[] = [
     defaultLabel: '(Default: 60m)',
     min: 1,
     max: 1440,
+  },
+  {
+    key: 'browserRecycleScrapes',
+    label: 'Browser Recycle',
+    description:
+      'Automatically restart Chromium and prune disk cache after this many scrapes',
+    defaultLabel: '(Default: 100 scrapes)',
+    min: 10,
+    max: 1000,
   },
 ];

@@ -8,6 +8,7 @@ const MAX_CACHE_BYTES = 250 * 1024 * 1024; // 250 MB HTTP disk cache ceiling
 
 let sharedContext: BrowserContext | null = null;
 let activeProxySignature: string | null = null;
+let scrapesSinceLaunch = 0;
 let launchPromise: Promise<BrowserContext> | null = null;
 
 function getDirectorySizeBytes(targetDir: string): number {
@@ -129,23 +130,50 @@ async function launchPersistentBrowser(
     if (sharedContext === context) {
       sharedContext = null;
       activeProxySignature = null;
+      scrapesSinceLaunch = 0;
     }
   });
 
   sharedContext = context;
   activeProxySignature = proxyUrl ?? '';
+  scrapesSinceLaunch = 0;
   return context;
+}
+
+export function recordBrowserScrape(): void {
+  if (sharedContext) {
+    scrapesSinceLaunch += 1;
+  }
+}
+
+export function getBrowserSessionStats(): {
+  active: boolean;
+  scrapesSinceLaunch: number;
+} {
+  return {
+    active: sharedContext !== null,
+    scrapesSinceLaunch,
+  };
 }
 
 export async function getBrowserContext(): Promise<BrowserContext> {
   const settings = getSettings();
   const desiredProxy = settings.proxyUrl ?? '';
+  const maxScrapesBeforeRecycle = Math.max(
+    1,
+    settings.browserRecycleScrapes || 100
+  );
 
-  // If proxy configuration changed since last launch, recycle the persistent context cleanly
-  if (sharedContext && activeProxySignature !== desiredProxy) {
+  // Recycle the persistent context cleanly if proxy configuration changed or scrape ceiling was reached
+  if (
+    sharedContext &&
+    (activeProxySignature !== desiredProxy ||
+      scrapesSinceLaunch >= maxScrapesBeforeRecycle)
+  ) {
     const oldContext = sharedContext;
     sharedContext = null;
     activeProxySignature = null;
+    scrapesSinceLaunch = 0;
     try {
       await oldContext.close();
     } catch {

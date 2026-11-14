@@ -8,6 +8,7 @@ export interface UpdateGuardrailsInput {
   maxRequestsPerHour: number;
   maxRequestsPerDay: number;
   cooldownMinutes: number;
+  browserRecycleScrapes: number;
   proxyUrl?: string | null;
 }
 
@@ -57,6 +58,7 @@ export function getPublicSettings(): PublicScraperSettings {
     maxRequestsPerHour: s.maxRequestsPerHour,
     maxRequestsPerDay: s.maxRequestsPerDay,
     cooldownMinutes: s.cooldownMinutes,
+    browserRecycleScrapes: s.browserRecycleScrapes,
     circuitBreakerActive,
     circuitBreakerUntil: circuitBreakerActive ? s.circuitBreakerUntil : null,
     circuitBreakerReason: circuitBreakerActive ? s.circuitBreakerReason : null,
@@ -111,6 +113,7 @@ export function updateGuardrails(input: UpdateGuardrailsInput): ScraperSettings 
          maxRequestsPerHour = ?,
          maxRequestsPerDay = ?,
          cooldownMinutes = ?,
+         browserRecycleScrapes = ?,
          proxyUrl = ?,
          updatedAt = ?
      WHERE id = 1`
@@ -121,6 +124,7 @@ export function updateGuardrails(input: UpdateGuardrailsInput): ScraperSettings 
     input.maxRequestsPerHour,
     input.maxRequestsPerDay,
     input.cooldownMinutes,
+    input.browserRecycleScrapes,
     nextProxy,
     now
   );

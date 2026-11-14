@@ -6,6 +6,7 @@ import {
   resolveAirlineCodeFromName,
   resolveAirlineName,
 } from '@/utils/airline';
+import { isBasicEconomyDomCard } from './fareTierGuard';
 import { filterValidItineraries } from './itineraryValidator';
 
 function pad2(n: number): string {
@@ -501,9 +502,15 @@ export async function parseItinerariesFromDom(
       .filter((entry) => /\$\d+|€\d+|£\d+|\d+\s*(USD|EUR|GBP|CAD|AUD)/i.test(entry.text));
   });
 
+  const enforceStandardEconomy =
+    req.cabinClass === 'economy' && req.fareTier === 'Standard';
   const results: RouteItinerary[] = [];
 
   for (const card of domCards) {
+    if (enforceStandardEconomy && isBasicEconomyDomCard(card.text, card.aria)) {
+      continue;
+    }
+
     const combined = `${card.aria}\n${card.text}`;
     const priceMatch = combined.match(/(?:\$|€|£|USD|EUR|GBP|CAD|AUD)\s*([\d,]+)/i);
     if (!priceMatch?.[1]) continue;

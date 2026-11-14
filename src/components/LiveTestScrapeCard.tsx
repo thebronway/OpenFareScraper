@@ -18,8 +18,8 @@ export function LiveTestScrapeCard({
   globalPaused,
   onScrapeCompleted,
 }: LiveTestScrapeCardProps) {
-  const [origin, setOrigin] = useState('WAS');
-  const [destination, setDestination] = useState('SFO');
+  const [origin, setOrigin] = useState('DCA');
+  const [destination, setDestination] = useState('LAX');
   const [departureDate, setDepartureDate] = useState(defaultFutureDate);
   const [cabinClass, setCabinClass] = useState<CabinClass>('economy');
   const [fareTier, setFareTier] = useState<FareTier>('Standard');

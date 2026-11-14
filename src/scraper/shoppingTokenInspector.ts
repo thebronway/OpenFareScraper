@@ -147,19 +147,45 @@ function inspectDecodedQueryToken(token: string): ShoppingPayloadInspection | nu
   const currencyBytes = getFirstBytes(rootFields, 5);
   const f12Bytes = getFirstBytes(rootFields, 12);
   const f6Bytes = getFirstBytes(rootFields, 6);
+  const hasTfsHeader =
+    getFirstVarint(rootFields, 1) === 28 && getFirstBytes(rootFields, 3) !== null;
   const hasCurrency =
     currencyBytes !== null &&
     currencyBytes.length === 3 &&
     /^[A-Z]{3}$/.test(currencyBytes.toString('utf8'));
 
-  if (!hasCurrency && !f12Bytes && !f6Bytes) {
+  if (!hasCurrency && !f12Bytes && !f6Bytes && !hasTfsHeader) {
     return null;
   }
 
   const rootExclusion = getFirstVarint(rootFields, 25) === 1;
+  let f6Exclusion = false;
   let f12Exclusion = false;
   let isBaselineUnfilteredEconomy = false;
   let filterSubHex = 'none';
+
+  if (f6Bytes) {
+    const f6Fields = parseProtoMessage(f6Bytes);
+    if (f6Fields) {
+      if (
+        getFirstVarint(f6Fields, 18) === 1 ||
+        getFirstVarint(f6Fields, 25) === 1
+      ) {
+        f6Exclusion = true;
+      }
+      const f6Sub3Bytes = getFirstBytes(f6Fields, 3);
+      if (f6Sub3Bytes) {
+        const f6Sub3Fields = parseProtoMessage(f6Sub3Bytes);
+        if (
+          f6Sub3Fields &&
+          (getFirstVarint(f6Sub3Fields, 18) === 1 ||
+            getFirstVarint(f6Sub3Fields, 25) === 1)
+        ) {
+          f6Exclusion = true;
+        }
+      }
+    }
+  }
 
   if (f12Bytes) {
     const f12Fields = parseProtoMessage(f12Bytes);
@@ -201,8 +227,8 @@ function inspectDecodedQueryToken(token: string): ShoppingPayloadInspection | nu
     }
   }
 
-  const hasExplicitExclusion = rootExclusion || f12Exclusion;
-  const filterSignature = `r25:${rootExclusion ? 1 : 0}|f12_3:${filterSubHex}`;
+  const hasExplicitExclusion = rootExclusion || f6Exclusion || f12Exclusion;
+  const filterSignature = `r25:${rootExclusion ? 1 : 0}|f6:${f6Exclusion ? 1 : 0}|f12_3:${filterSubHex}`;
 
   return {
     hasValidQueryToken: true,
@@ -218,7 +244,7 @@ function collectTokenCandidates(
   depth = 0,
   state = { visited: 0 }
 ): void {
-  if (depth > 6 || state.visited > 500 || out.length >= 12) return;
+  if (depth > 12 || state.visited > 25_000 || out.length >= 24) return;
   state.visited += 1;
 
   if (typeof node === 'string') {
@@ -237,7 +263,7 @@ function collectTokenCandidates(
     // Prioritize trailing elements first since Google places the query state token at the end
     for (let i = node.length - 1; i >= 0; i--) {
       collectTokenCandidates(node[i], out, depth + 1, state);
-      if (out.length >= 12 || state.visited > 500) break;
+      if (out.length >= 24 || state.visited > 25_000) break;
     }
   }
 }
@@ -284,33 +310,46 @@ export function inspectShoppingResponse(
   responseBody: string,
   requestPostData?: string | null
 ): ShoppingPayloadInspection {
-  const candidates = extractCandidatesFromRawText(responseBody);
-
-  if (candidates.length === 0 && requestPostData) {
+  const requestCandidates: string[] = [];
+  if (requestPostData) {
     try {
       const params = new URLSearchParams(requestPostData);
       const fReq = params.get('f.req');
       if (fReq) {
-        candidates.push(...extractCandidatesFromRawText(fReq));
+        requestCandidates.push(...extractCandidatesFromRawText(fReq));
       }
     } catch {
       // Ignore malformed form payloads
     }
   }
 
+  const responseCandidates = extractCandidatesFromRawText(responseBody);
+  const candidates = Array.from(
+    new Set([...requestCandidates, ...responseCandidates])
+  );
+
+  let baselineInspection: ShoppingPayloadInspection | null = null;
   let matchedInspection: ShoppingPayloadInspection | null = null;
 
   for (const candidate of candidates) {
     const inspection = inspectDecodedQueryToken(candidate);
     if (!inspection) continue;
 
-    if (inspection.isBaselineUnfilteredEconomy) {
+    if (inspection.hasExplicitExclusion) {
       return inspection;
     }
 
-    if (!matchedInspection || inspection.hasExplicitExclusion) {
+    if (inspection.isBaselineUnfilteredEconomy && !baselineInspection) {
+      baselineInspection = inspection;
+    }
+
+    if (!matchedInspection) {
       matchedInspection = inspection;
     }
+  }
+
+  if (baselineInspection) {
+    return baselineInspection;
   }
 
   if (matchedInspection) {
