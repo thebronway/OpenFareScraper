@@ -23,12 +23,12 @@ export function Navbar({
         <div className="flex items-center space-x-3 text-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/FlightSentry-Scaper-icon-sm.png"
-            alt="FlightSentry Logo"
+            src="/OpenFareScraper-icon-sm.png"
+            alt="OpenFareScraper Logo"
             className="h-[42px] w-auto object-contain rounded"
           />
           <span className="font-bold text-xl tracking-tight">
-            FlightSentry Scraper
+            OpenFareScraper
           </span>
         </div>
 

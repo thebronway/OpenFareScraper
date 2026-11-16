@@ -1,10 +1,10 @@
 services:
-  flightsentry-scraper:
+  openfarescraper:
     build:
       context: .
       dockerfile: Dockerfile
-    image: thebronway/flightsentry-scraper:latest
-    container_name: flightsentry_scraper
+    image: thebronway/openfarescraper:latest
+    container_name: openfarescraper
     ports:
       - "4001:4001"
     volumes:

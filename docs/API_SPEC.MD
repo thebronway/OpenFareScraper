@@ -1,4 +1,4 @@
-# FlightSentry-Scraper REST API Specification
+# OpenFareScraper REST API Specification
 
 **API Base Path:** `/api/v1`  
 **Specification Standards:** OpenAPI 3.1.0 · RFC 9110 (HTTP Semantics) · RFC 6750 (Bearer Token Usage) · RFC 9457 (Problem Details) · ISO 8601 · ISO 4217 · IATA
@@ -7,11 +7,11 @@
 
 ## 1. Overview & Transport Architecture
 
-FlightSentry-Scraper exposes an authenticated JSON-over-HTTP REST API that executes headless Chromium queries against Google Flights and returns normalized itinerary pricing data.
+OpenFareScraper exposes an authenticated JSON-over-HTTP REST API that executes headless Chromium queries against Google Flights and returns normalized itinerary pricing data.
 
 ### 1.1 Base URLs
 * **Same-Host / LAN Deployment:** `http://<host>:4001/api/v1`
-* **Docker Compose Internal Network:** `http://flightsentry-scraper:4001/api/v1`
+* **Docker Compose Internal Network:** `http://openfarescraper:4001/api/v1`
 
 ### 1.2 Protocol & Content Negotiation
 * **Transport:** HTTP/1.1 or HTTP/2 (deploy behind a TLS-terminating reverse proxy if traversing untrusted networks).

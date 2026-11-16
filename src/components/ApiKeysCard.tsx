@@ -240,7 +240,7 @@ export function ApiKeysCard({ keys, onRefresh }: ApiKeysCardProps) {
       <div className="overflow-x-auto">
         {keys.length === 0 ? (
           <p className="text-xs text-gunmetal-muted py-6 text-center border border-dashed border-gunmetal-border rounded-lg">
-            No API keys minted yet. Create one to connect FlightSentry.
+            No API keys minted yet. Create one to connect FlightSentry, another client or another service.
           </p>
         ) : (
           <table className="w-full text-left text-xs">

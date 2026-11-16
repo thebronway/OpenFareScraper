@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import type { NextRequest, NextResponse } from 'next/server';
 import { getSettings } from '@/db/settings';
 
-export const ADMIN_COOKIE_NAME = 'fss_admin_session';
+export const ADMIN_COOKIE_NAME = 'ofs_admin_session';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_LOGIN_ATTEMPTS = 5;

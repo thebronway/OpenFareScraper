@@ -3,9 +3,9 @@ import { ThemeProvider } from 'next-themes';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'FlightSentry Scraper',
+  title: 'OpenFareScraper',
   description:
-    'Self-hosted headless Chromium scraper microservice for FlightSentry.',
+    'Self-hosted headless Chromium Google Flights scraper microservice with a REST API—built for FlightSentry, compatible flight trackers, and custom API integrations.',
   icons: {
     icon: [
       { url: '/favicon/favicon.ico' },

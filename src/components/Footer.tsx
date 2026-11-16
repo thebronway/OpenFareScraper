@@ -10,19 +10,27 @@ export function Footer() {
         <div className="mb-4 md:mb-0 flex flex-col items-center md:items-start text-center md:text-left gap-1">
           <div className="flex items-center gap-2">
             <a
-              href="https://github.com/thebronway/FlightSentry-Scraper/blob/main/CHANGELOG.md"
+              href="https://github.com/thebronway/OpenFareScraper/blob/main/CHANGELOG.md"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-white transition-colors font-medium"
             >
-              FlightSentry Scraper
+              OpenFareScraper
             </a>
             <span className="text-xs px-2 py-0.5 rounded-full bg-gunmetal-canvas border border-gunmetal-border text-gunmetal-muted">
               v{packageInfo.version}
             </span>
           </div>
           <span className="text-xs text-gunmetal-muted">
-            Headless Chromium Engine
+            Headless Chromium Engine · Built for{' '}
+            <a
+              href="https://github.com/thebronway/FlightSentry"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white transition-colors underline decoration-gunmetal-border hover:decoration-slate-400"
+            >
+              FlightSentry
+            </a>
           </span>
           <span className="text-xs text-gunmetal-muted">
             Isolated Google Flights REST Bridge{' '}
@@ -44,7 +52,7 @@ export function Footer() {
             <span>Developer&apos;s Website</span>
           </a>
           <a
-            href="https://github.com/thebronway/FlightSentry-Scraper/issues"
+            href="https://github.com/thebronway/OpenFareScraper/issues"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-purple-500 transition-colors flex items-center gap-1.5 font-medium"
@@ -59,7 +67,7 @@ export function Footer() {
             className="hover:text-yellow-500 transition-colors flex items-center gap-1.5 font-medium"
           >
             <Coffee className="w-4 h-4" />
-            <span>Support FlightSentry</span>
+            <span>Support OpenFareScraper</span>
           </a>
         </div>
       </div>

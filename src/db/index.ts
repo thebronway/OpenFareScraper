@@ -11,9 +11,9 @@ function resolveDatabasePath(): string {
     return process.env.DATABASE_PATH;
   }
   if (process.env.NODE_ENV === 'production' || fs.existsSync('/app/data')) {
-    return '/app/data/scraper.db';
+    return '/app/data/openfarescraper.db';
   }
-  return path.join(process.cwd(), 'data', 'scraper.db');
+  return path.join(process.cwd(), 'data', 'openfarescraper.db');
 }
 
 function getConnection(): Database.Database {

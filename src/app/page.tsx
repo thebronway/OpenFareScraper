@@ -157,7 +157,7 @@ export default function HomePage() {
 
       {loading ? (
         <main className="flex-1 flex items-center justify-center text-sm text-gunmetal-muted">
-          Initializing FlightSentry Scraper Console...
+          Initializing OpenFareScraper Console...
         </main>
       ) : !authenticated || !settings ? (
         <AuthGateScreen

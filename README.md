@@ -1,32 +1,32 @@
-# FlightSentry-Scraper
+# OpenFareScraper
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-v0.4.2-green.svg)
-![Docker](https://img.shields.io/docker/pulls/thebronway/flightsentry-scraper?logo=docker)
+![Version](https://img.shields.io/badge/version-v0.4.5-green.svg)
+![Docker](https://img.shields.io/docker/pulls/thebronway/openfarescraper?logo=docker)
 
-### A self-hosted headless Chromium scraper microservice for FlightSentry.
+### Self-hosted headless Chromium Google Flights scraper microservice with a REST API—built for [FlightSentry](https://github.com/thebronway/FlightSentry), compatible flight trackers, and custom API integrations.
 Built with Next.js, Playwright, SQLite, and Docker.
 
-> **Note:** This app is in active development, features and functionalities will vary.
+Originally built to power [FlightSentry](https://github.com/thebronway/FlightSentry), **OpenFareScraper** is a standalone Google Flights REST API (`/api/v1`) for any flight tracker, fare monitor, or custom integration. Unlike basic scrapers that only read headline prices, it encodes native Google Flights protobuf (`tfs`) queries and extracts structured itinerary variables—including native **Basic vs. Standard (`Economy (exclude Basic)`)** fare filtering across airlines.
 
-FlightSentry-Scraper runs an isolated Chromium instance to scrape Google Flights and exposes a rate-limited, API-key-authenticated REST API (`/api/v1`) consumed by the main FlightSentry application.
-
-**GitHub:** [thebronway/FlightSentry-Scraper](https://github.com/thebronway/FlightSentry-Scraper) | [Report a Bug or Request a Feature](https://github.com/thebronway/FlightSentry-Scraper/issues)  
-**API Specs:** [API Spec](./docs/API_SPEC.MD).  
-**Docker Hub:** [thebronway/flightsentry-scraper](https://hub.docker.com/r/thebronway/flightsentry-scraper)  
-**Roadmap:** See planned features in the [Project Roadmap](./ROADMAP.md).  
-**Changelog:** Review past releases in the [Changelog](./CHANGELOG.md).  
-**Support:** Find this useful? [Support my work (Buy me a coffee)](https://buymeacoffee.com/brianconway).
+**GitHub:** [thebronway/OpenFareScraper](https://github.com/thebronway/OpenFareScraper) | [Report a Bug or Request a Feature](https://github.com/thebronway/OpenFareScraper/issues)  
+**API Specs:** [API Spec](./docs/API_SPEC.MD)  
+**Docker Hub:** [thebronway/openfarescraper](https://hub.docker.com/r/thebronway/openfarescraper)  
+**Roadmap:** [Project Roadmap](./ROADMAP.md)  
+**Changelog:** [Changelog](./CHANGELOG.md)  
+**Support:** [Buy me a coffee](https://buymeacoffee.com/brianconway)
 
 ## Features
-- **Headless Chromium Scraper:** Persistent stealth browser context with Google consent handling, `ds:1` payload extraction, and DOM fallback into `RouteItinerary[]`.
-- **Fare & Cabin Support:** Encodes single or multi-airport IATA arrays, cabin classes (`economy`, `premium_economy`, `business`, `first`), and native Google Flights `Basic` vs `Standard` (`Economy (exclude Basic)`) filtering with automatic intercontinental fallback.
-- **Anti-Bot Guardrails:** Strict serial FIFO queue (`concurrency = 1`), randomized inter-request jitter, rolling hourly/daily query caps, and automatic CAPTCHA/HTTP 429/403 circuit breaker with manual cooldown reset.
-- **Defense-in-Depth Security:** Mandatory first-run `scrypt` admin password setup, HMAC-SHA256 signed `HttpOnly` session cookies, login rate limiting, SHA-256 hashed `fss_...` API keys, Zod input validation, strict Google-domain `page.route()` network isolation, and non-root container execution.
-- **Admin Console:** Dark Gunmetal web UI on port `4001` for API key lifecycle management, guardrail and proxy configuration, live test scrapes, and diagnostic scrape logs.
+- **Native Basic vs. Standard Fare Filtering:** Encodes Google Flights' `Economy (exclude Basic)` protobuf parameter (`field 25 = 1` + `tfu=EgYIABAAGAA`), filtering out Basic Economy fares even on carriers with free carry-on bags (AA, DL, AS, B6, WN), with automatic fallback on intercontinental routes.
+- **Full Itinerary Variable Extraction:** Queries single or multi-airport IATA arrays (1–8 airports per navigation) across all cabin classes (`economy`, `premium_economy`, `business`, `first`) and returns carrier codes, flight numbers, timestamps, total duration, stop counts, layover airports, max layover minutes, and per-segment legs.
+- **Post-Extraction Filtering:** Filter results by `maxStops`, `airline`, `flightNumber` (matching any operating segment), `includedAirlines`, and `excludedAirlines`.
+- **Headless Chromium Engine:** Persistent stealth browser context with Google consent handling, `ds:1` hydration extraction, DOM fallback, and automatic browser recycling.
+- **Anti-Bot Guardrails:** Serial FIFO queue (`concurrency = 1`), randomized jitter delays, rolling hourly/daily request caps, global pause (`HTTP 503`), and automatic CAPTCHA/429/403 circuit breaker with manual reset.
+- **Defense-in-Depth Security:** First-run `scrypt` admin password setup, HMAC-SHA256 `HttpOnly` session cookies (`ofs_admin_session`), login rate limiting, SHA-256 hashed `ofs_...` API keys, Zod validation, strict Google-domain `page.route()` isolation, and non-root execution.
+- **Admin Console:** Web UI on port `4001` for API key management, guardrail and proxy configuration, live test scrapes, and scrape logs.
 
 ## Data Sources
-FlightSentry-Scraper connects directly to Google Flights via headless Chromium and exposes `/api/v1/health` and `/api/v1/scrape` for the main FlightSentry application.
+OpenFareScraper queries Google Flights directly via headless Chromium and exposes `/api/v1/health` and `/api/v1/scrape` for [FlightSentry](https://github.com/thebronway/FlightSentry) and any REST API client.
 
 ## Author
 Check out my other projects at [brian.conway.im](https://brian.conway.im/).

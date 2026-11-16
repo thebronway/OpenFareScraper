@@ -2,8 +2,8 @@ import crypto from 'crypto';
 import type { NextRequest } from 'next/server';
 import { findActiveKeyByHash, touchApiKeyLastUsed } from '@/db/apiKeys';
 
-const KEY_PREFIX = 'fss_';
-const KEY_PATTERN = /^fss_[a-f0-9]{64}$/;
+const KEY_PREFIX = 'ofs_';
+const KEY_PATTERN = /^ofs_[a-f0-9]{64}$/;
 
 export interface GeneratedApiKey {
   rawKey: string;

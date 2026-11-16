@@ -1,9 +1,15 @@
-# FlightSentry-Scraper Changelog
+# OpenFareScraper Changelog
 
-*Last updated: 2026-11-14*  
-*Current Version: v0.4.2*
+*Last updated: 2026-11-16*  
+*Current Version: v0.4.5*
 
 ## Changelog
+
+### Release v0.4.5
+- Renamed project, package, and Docker service/image/container to `OpenFareScraper` (`thebronway/openfarescraper`).
+- Updated SQLite default path to `openfarescraper.db`, admin session cookie to `ofs_admin_session`, and API key prefix to `ofs_`.
+- Renamed icon assets to `OpenFareScraper-icon.png` and `OpenFareScraper-icon-sm.png` and updated `site.webmanifest`.
+- Updated Admin Console title, metadata, navbar, API key empty-state copy, and footer (linking to `thebronway/OpenFareScraper` and `thebronway/FlightSentry`).
 
 ### Release v0.4.2
 - Tightened `shoppingTokenInspector.ts` and `googleFlightsScraper.ts` so `Standard` economy scrapes only accept `GetShoppingResults` responses with explicit Basic Economy exclusion while preserving SSR `ds:1` results.
