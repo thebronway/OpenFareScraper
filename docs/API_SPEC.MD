@@ -31,16 +31,16 @@ Unlike stateless REST APIs, `POST /api/v1/scrape` drives a single persistent Chr
 
 ## 2. Authentication (`RFC 6750`)
 
-All `/api/v1/*` endpoints require a valid API key minted in the FlightSentry-Scraper Admin Console (`/api/admin/keys`).
+All `/api/v1/*` endpoints require a valid API key minted in the OpenFareScraper Admin Console (`/api/admin/keys`).
 
 ### 2.1 Header Format
 ```http
-Authorization: Bearer fss_<48_lowercase_hex_characters>
+Authorization: Bearer ofs_<64_lowercase_hex_characters>
 ```
 
 ### 2.2 Token Properties & Security Semantics
-* **Format:** 52 characters total (`fss_` prefix followed by 24 cryptographically random bytes encoded as 48 lowercase hex characters).
-* **Storage:** The server stores only the display prefix (`fss_xxxxxxxx`) and an unsalted SHA-256 hex digest. Raw tokens cannot be retrieved after creation.
+* **Format:** 68 characters total (`ofs_` prefix followed by 32 cryptographically random bytes encoded as 64 lowercase hex characters).
+* **Storage:** The server stores only the display prefix (`ofs_xxxxxxxx`) and an unsalted SHA-256 hex digest. Raw tokens cannot be retrieved after creation.
 * **Validation:** Incoming tokens are hashed with SHA-256 and matched against non-revoked keys (`revokedAt IS NULL`). Upon match, `lastUsedAt` is updated asynchronously.
 * **Failure Mode:** Missing headers, non-`Bearer` schemes, malformed tokens, or revoked keys immediately return `401 Unauthorized` without entering the scrape queue.
 
@@ -48,7 +48,7 @@ Authorization: Bearer fss_<48_lowercase_hex_characters>
 
 ## 3. Rate Limiting, Quotas & Circuit Breaker
 
-FlightSentry-Scraper enforces two independent protection layers before launching Chromium:
+OpenFareScraper enforces two independent protection layers before launching Chromium:
 
 ### 3.1 Rolling Window Quotas
 * **Hourly Cap (`maxRequestsPerHour`):** Sliding 60-minute window (`createdAt >= now - 1 hour`). Default: `20`.
@@ -74,7 +74,7 @@ Content-Type: application/json; charset=utf-8
 
 ### 4.1 `GET /api/v1/health`
 
-Returns service liveness, version metadata, circuit breaker state, current FIFO queue depth, and rolling quota consumption. Consumer applications should poll this endpoint before dispatching scrapes to determine whether to route queries to FlightSentry-Scraper or fail over to a metered API provider.
+Returns service liveness, version metadata, circuit breaker state, current FIFO queue depth, and rolling quota consumption. Consumer applications should poll this endpoint before dispatching scrapes to determine whether to route queries to OpenFareScraper or fail over to a metered API provider.
 
 #### Request
 * **Method:** `GET`
@@ -89,7 +89,7 @@ Returns service liveness, version metadata, circuit breaker state, current FIFO 
 | :--- | :--- | :--- | :--- |
 | `status` | `string` | No | Service health indicator: `"ok"`, `"rate_limited"`, `"cooldown"`, or `"paused"`. |
 | `state` | `string` | No | Explicit operational state: `"ready"`, `"rate_limited"`, `"cooldown"`, or `"paused"`. |
-| `version` | `string` | No | Semantic version of the running scraper service from `package.json` (e.g., `"0.4.0"`). |
+| `version` | `string` | No | Semantic version of the running scraper service from `package.json` (e.g., `"0.4.5"`). |
 | `apiVersion` | `string` | No | REST API major version identifier (`"v1"`). |
 | `paused` | `boolean` | No | `true` when Global Pause is enabled by an administrator in the Admin Console (read-only for API key users); `false` otherwise. |
 | `circuitBreakerActive` | `boolean` | No | `true` if Google anti-bot protection recently tripped cooldown; `false` otherwise. |
@@ -106,7 +106,7 @@ Returns service liveness, version metadata, circuit breaker state, current FIFO 
 #### Example Request
 ```bash
 curl -s -X GET "http://localhost:4001/api/v1/health" \
-  -H "Authorization: Bearer fss_8f9a2c4e1b0d7a6f3e5c9b2a4d8f1e0c7b6a5d4e3f2a1b0c"
+  -H "Authorization: Bearer ofs_8f9a2c4e1b0d7a6f3e5c9b2a4d8f1e0c7b6a5d4e3f2a1b0c9d8e7f6a5b4c3d2e"
 ```
 
 #### Example Response (`200 OK`)
@@ -180,7 +180,7 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
 | Field | Type | Nullable | Present When | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `status` | `string` | No | Always | Execution outcome enum: `"Success"`, `"SoldOut"`, `"RateLimited"`, `"Paused"`, or `"Error"`. |
-| `provider` | `string` | No | Always | Fixed provider identifier: `"flightsentry-scraper"`. |
+| `provider` | `string` | No | Always | Fixed provider identifier: `"openfarescraper"`. |
 | `currency` | `string` | No | Always | Normalized 3-letter ISO 4217 currency code of returned prices. |
 | `lowestPrice` | `number \| null` | Yes | Always | Lowest `price` among `itineraries`, or `null` when `itineraries` is empty. |
 | `itineraries` | `RouteItinerary[]` | No | Always | Array of matching flight options sorted ascending by `price`. Empty (`[]`) on `SoldOut`, `RateLimited`, or `Error`. |
@@ -257,7 +257,7 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
 ```json
 {
   "status": "Success",
-  "provider": "flightsentry-scraper",
+  "provider": "openfarescraper",
   "currency": "USD",
   "lowestPrice": 219,
   "itineraries": [
@@ -305,7 +305,7 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
 ```json
 {
   "status": "SoldOut",
-  "provider": "flightsentry-scraper",
+  "provider": "openfarescraper",
   "currency": "USD",
   "lowestPrice": null,
   "itineraries": [],
@@ -322,7 +322,7 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
 ```json
 {
   "status": "Error",
-  "provider": "flightsentry-scraper",
+  "provider": "openfarescraper",
   "currency": "USD",
   "lowestPrice": null,
   "itineraries": [],
@@ -340,7 +340,7 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
 ```json
 {
   "status": "Error",
-  "provider": "flightsentry-scraper",
+  "provider": "openfarescraper",
   "currency": "USD",
   "lowestPrice": null,
   "itineraries": [],
@@ -365,7 +365,7 @@ Content-Type: application/json; charset=utf-8
 ```json
 {
   "status": "RateLimited",
-  "provider": "flightsentry-scraper",
+  "provider": "openfarescraper",
   "currency": "USD",
   "lowestPrice": null,
   "itineraries": [],
@@ -384,7 +384,7 @@ Content-Type: application/json; charset=utf-8
 ```json
 {
   "status": "Error",
-  "provider": "flightsentry-scraper",
+  "provider": "openfarescraper",
   "currency": "USD",
   "lowestPrice": null,
   "itineraries": [],
@@ -402,9 +402,9 @@ Content-Type: application/json; charset=utf-8
 
 ## 5. Consumer Implementation Guide (TypeScript)
 
-When integrating FlightSentry-Scraper into an external flight tracker (such as **FlightSentry**):
+When integrating OpenFareScraper into an external flight tracker (such as [**FlightSentry**](https://github.com/thebronway/FlightSentry)):
 
-1. **Normalize Base URL:** Strip trailing slashes from the user-configured endpoint URL (e.g., `http://flightsentry-scraper:4001`) before appending `/api/v1/health` or `/api/v1/scrape`.
+1. **Normalize Base URL:** Strip trailing slashes from the user-configured endpoint URL (e.g., `http://openfarescraper:4001`) before appending `/api/v1/health` or `/api/v1/scrape`.
 2. **Pre-Flight Health Gate:** Before invoking `/api/v1/scrape`, call `GET /api/v1/health` with a short timeout (`5,000 ms`). If `circuitBreakerActive === true`, `usage.remainingHour === 0`, or `usage.remainingDay === 0`, skip the scraper immediately and fail over to the next provider without waiting on a `429`.
 3. **Specific Flight vs. Route Searches:**
    * For **Route Tracking**, omit `airline` and `flightNumber` (optionally pass `includedAirlines` / `excludedAirlines` and `maxStops`). Pick `itineraries[0]` as the lowest fare (since `itineraries` is pre-sorted ascending by `price`).
@@ -414,9 +414,9 @@ When integrating FlightSentry-Scraper into an external flight tracker (such as *
 ### 5.1 Reference TypeScript Adapter
 
 ```typescript
-export interface FlightSentryScraperConfig {
-  baseUrl: string; // e.g. "http://flightsentry-scraper:4001"
-  apiKey: string;  // e.g. "fss_..."
+export interface OpenFareScraperConfig {
+  baseUrl: string; // e.g. "http://openfarescraper:4001"
+  apiKey: string;  // e.g. "ofs_..."
   timeoutMs?: number;
 }
 
@@ -483,7 +483,7 @@ export interface ScraperItinerary {
 
 export interface ScraperQueryResponse {
   status: 'Success' | 'SoldOut' | 'RateLimited' | 'Paused' | 'Error';
-  provider: 'flightsentry-scraper';
+  provider: 'openfarescraper';
   currency: string;
   lowestPrice: number | null;
   itineraries: ScraperItinerary[];
@@ -498,12 +498,12 @@ export interface ScraperQueryResponse {
   retryAfter?: string;
 }
 
-export class FlightSentryScraperClient {
+export class OpenFareScraperClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly timeoutMs: number;
 
-  constructor(config: FlightSentryScraperConfig) {
+  constructor(config: OpenFareScraperConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
     this.apiKey = config.apiKey.trim();
     this.timeoutMs = config.timeoutMs ?? 90_000;
@@ -551,7 +551,7 @@ export class FlightSentryScraperClient {
 
     return {
       status: res.status === 429 ? 'RateLimited' : 'Error',
-      provider: 'flightsentry-scraper',
+      provider: 'openfarescraper',
       currency: params.currency ?? 'USD',
       lowestPrice: null,
       itineraries: [],
@@ -561,7 +561,7 @@ export class FlightSentryScraperClient {
         queryUrl: '',
         itineraryCount: 0,
       },
-      error: `Unexpected HTTP ${res.status} from FlightSentry-Scraper`,
+      error: `Unexpected HTTP ${res.status} from OpenFareScraper`,
     };
   }
 }
@@ -574,17 +574,16 @@ export class FlightSentryScraperClient {
 ```yaml
 openapi: 3.1.0
 info:
-  title: FlightSentry-Scraper API
-  version: 0.4.0
+  title: OpenFareScraper API
+  version: 0.4.5
   description: |
-    Self-hosted headless Chromium microservice for scraping Google Flights itineraries,
-    protected by Bearer API keys, serial FIFO queueing, rolling quotas, and an anti-bot circuit breaker.
+    A Self-hosted headless Chromium Google Flights scraper microservice with a REST API. Built for FlightSentry, compatible flight trackers, and custom API integrations.
   license:
     name: MIT
 servers:
   - url: http://localhost:4001/api/v1
     description: Local or LAN Docker container
-  - url: http://flightsentry-scraper:4001/api/v1
+  - url: http://openfarescraper:4001/api/v1
     description: Internal Docker Compose network
 security:
   - BearerAuth: []
@@ -680,7 +679,7 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: fss_<48-hex-chars>
+      bearerFormat: ofs_<64-hex-chars>
   schemas:
     HealthResponse:
       type: object
@@ -705,7 +704,7 @@ components:
           enum: ["ready", "rate_limited", "cooldown", "paused"]
         version:
           type: string
-          example: "0.4.0"
+          example: "0.4.5"
         apiVersion:
           type: string
           example: "v1"
@@ -950,7 +949,7 @@ components:
           enum: ["Success", "SoldOut", "RateLimited", "Paused", "Error"]
         provider:
           type: string
-          enum: ["flightsentry-scraper"]
+          enum: ["openfarescraper"]
         currency:
           type: string
           example: "USD"
@@ -1013,4 +1012,4 @@ components:
 ---
 
 ### 7.3 End of Specification
-*FlightSentry-Scraper REST API*
+*OpenFareScraper REST API*

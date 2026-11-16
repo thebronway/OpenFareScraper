@@ -4,10 +4,10 @@
 ![Version](https://img.shields.io/badge/version-v0.4.5-green.svg)
 ![Docker](https://img.shields.io/docker/pulls/thebronway/openfarescraper?logo=docker)
 
-### Self-hosted headless Chromium Google Flights scraper microservice with a REST API—built for [FlightSentry](https://github.com/thebronway/FlightSentry), compatible flight trackers, and custom API integrations.
+### A Self-hosted headless Chromium Google Flights scraper microservice with a REST API. Built for [FlightSentry](https://github.com/thebronway/FlightSentry), compatible flight trackers, and custom API integrations.
 Built with Next.js, Playwright, SQLite, and Docker.
 
-Originally built to power [FlightSentry](https://github.com/thebronway/FlightSentry), **OpenFareScraper** is a standalone Google Flights REST API (`/api/v1`) for any flight tracker, fare monitor, or custom integration. Unlike basic scrapers that only read headline prices, it encodes native Google Flights protobuf (`tfs`) queries and extracts structured itinerary variables—including native **Basic vs. Standard (`Economy (exclude Basic)`)** fare filtering across airlines.
+Originally built to power [FlightSentry](https://github.com/thebronway/FlightSentry), **OpenFareScraper** is a standalone Google Flights REST API (`/api/v1`) for any flight tracker, fare monitor, or custom integration. Unlike basic scrapers that only read headline prices, it encodes native Google Flights protobuf (`tfs`) queries and extracts structured itinerary variables, including native **Basic vs. Standard (`Economy (exclude Basic)`)** fare filtering across airlines.
 
 **GitHub:** [thebronway/OpenFareScraper](https://github.com/thebronway/OpenFareScraper) | [Report a Bug or Request a Feature](https://github.com/thebronway/OpenFareScraper/issues)  
 **API Specs:** [API Spec](./docs/API_SPEC.MD)  
