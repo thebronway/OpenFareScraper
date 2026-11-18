@@ -68,6 +68,12 @@ export function isValidItinerary(
       }
     }
 
+    for (let i = 0; i < item.legs.length - 1; i++) {
+      if (item.legs[i].destination !== item.legs[i + 1].origin) {
+        return false;
+      }
+    }
+
     const firstLeg = item.legs[0];
     const lastLeg = item.legs[item.legs.length - 1];
     if (

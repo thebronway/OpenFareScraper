@@ -3,6 +3,7 @@ import { z } from 'zod';
 const IATA_AIRPORT_REGEX = /^[A-Z]{3}$/;
 const IATA_CARRIER_REGEX = /^[A-Z0-9]{2}$/;
 const FLIGHT_NUMBER_REGEX = /^[A-Za-z0-9]{1,8}$/;
+const FLIGHT_NUMBER_LIST_REGEX = /^[A-Za-z0-9]{1,8}(?:,[A-Za-z0-9]{1,8}){0,3}$/;
 const DATE_YYYY_MM_DD_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 function isValidCalendarDate(value: string): boolean {
@@ -146,46 +147,142 @@ const airportLocationSchema = z.union([
     .transform((codes) => Array.from(new Set(codes))),
 ]);
 
-export const scrapeRequestSchema = z.object({
-  origin: airportLocationSchema,
-  destination: airportLocationSchema,
-  departureDate: z
-    .string()
-    .trim()
-    .refine(isValidCalendarDate, {
-      message: 'departureDate must be a valid YYYY-MM-DD date.',
-    }),
-  cabinClass: z
-    .enum(['economy', 'premium_economy', 'business', 'first'])
-    .default('economy'),
-  fareTier: z.enum(['Basic', 'Standard']).default('Standard'),
-  currency: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z]{3}$/, 'Currency must be a 3-letter ISO code (e.g. USD).')
-    .default('USD'),
-  maxStops: z.number().int().min(0).max(3).optional(),
-  includedAirlines: z
-    .array(z.string().trim().toUpperCase().regex(IATA_CARRIER_REGEX))
-    .max(20)
-    .optional(),
-  excludedAirlines: z
-    .array(z.string().trim().toUpperCase().regex(IATA_CARRIER_REGEX))
-    .max(20)
-    .optional(),
+const scrapeLegSchema = z.object({
   airline: z
     .string()
     .trim()
     .toUpperCase()
-    .regex(IATA_CARRIER_REGEX)
+    .regex(
+      IATA_CARRIER_REGEX,
+      'Leg airline must be a 2-character uppercase IATA carrier code (e.g. AA).'
+    ),
+  bookingAirline: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(
+      IATA_CARRIER_REGEX,
+      'Leg bookingAirline must be a 2-character uppercase IATA carrier code.'
+    )
+    .nullable()
     .optional(),
   flightNumber: z
     .string()
     .trim()
     .toUpperCase()
     .transform((val) => val.replace(/\s+/g, ''))
-    .pipe(z.string().regex(FLIGHT_NUMBER_REGEX))
-    .optional(),
-  includeRaw: z.boolean().default(false),
+    .pipe(
+      z
+        .string()
+        .regex(
+          FLIGHT_NUMBER_REGEX,
+          'Leg flightNumber must be 1 to 8 alphanumeric characters.'
+        )
+    ),
+  origin: singleAirportSchema,
+  destination: singleAirportSchema,
 });
+
+export const scrapeRequestSchema = z
+  .object({
+    origin: airportLocationSchema,
+    destination: airportLocationSchema,
+    departureDate: z
+      .string()
+      .trim()
+      .refine(isValidCalendarDate, {
+        message: 'departureDate must be a valid YYYY-MM-DD date.',
+      }),
+    cabinClass: z
+      .enum(['economy', 'premium_economy', 'business', 'first'])
+      .default('economy'),
+    fareTier: z.enum(['Basic', 'Standard']).default('Standard'),
+    currency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, 'Currency must be a 3-letter ISO code (e.g. USD).')
+      .default('USD'),
+    maxStops: z.number().int().min(0).max(3).optional(),
+    includedAirlines: z
+      .array(z.string().trim().toUpperCase().regex(IATA_CARRIER_REGEX))
+      .max(20)
+      .optional(),
+    excludedAirlines: z
+      .array(z.string().trim().toUpperCase().regex(IATA_CARRIER_REGEX))
+      .max(20)
+      .optional(),
+    airline: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(IATA_CARRIER_REGEX)
+      .optional(),
+    flightNumber: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .transform((val) => val.replace(/\s+/g, ''))
+      .pipe(z.string().regex(FLIGHT_NUMBER_LIST_REGEX))
+      .optional(),
+    legs: z
+      .array(scrapeLegSchema)
+      .min(2, 'At least 2 legs are required when specifying connecting legs.')
+      .max(4, 'At most 4 legs are supported.')
+      .optional(),
+    includeRaw: z.boolean().default(false),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.legs || data.legs.length === 0) return;
+
+    const originSet = new Set(
+      Array.isArray(data.origin) ? data.origin : [data.origin]
+    );
+    if (!originSet.has(data.legs[0].origin)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `First leg origin (${data.legs[0].origin}) must match requested origin.`,
+        path: ['legs', 0, 'origin'],
+      });
+    }
+
+    const destSet = new Set(
+      Array.isArray(data.destination) ? data.destination : [data.destination]
+    );
+    const lastLeg = data.legs[data.legs.length - 1];
+    if (!destSet.has(lastLeg.destination)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Final leg destination (${lastLeg.destination}) must match requested destination.`,
+        path: ['legs', data.legs.length - 1, 'destination'],
+      });
+    }
+
+    if (data.maxStops !== undefined && data.maxStops < data.legs.length - 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `maxStops (${data.maxStops}) cannot be less than required stops (${data.legs.length - 1}) for ${data.legs.length} legs.`,
+        path: ['maxStops'],
+      });
+    }
+
+    for (let i = 0; i < data.legs.length; i++) {
+      if (data.legs[i].origin === data.legs[i].destination) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Leg ${i + 1} origin and destination cannot be identical (${data.legs[i].origin}).`,
+          path: ['legs', i, 'destination'],
+        });
+      }
+      if (
+        i < data.legs.length - 1 &&
+        data.legs[i].destination !== data.legs[i + 1].origin
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Leg ${i + 1} destination (${data.legs[i].destination}) must match leg ${i + 2} origin (${data.legs[i + 1].origin}).`,
+          path: ['legs', i + 1, 'origin'],
+        });
+      }
+    }
+  });

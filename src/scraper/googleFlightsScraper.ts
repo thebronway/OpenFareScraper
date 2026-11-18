@@ -27,7 +27,6 @@ import { inspectShoppingResponse } from './shoppingTokenInspector';
 import { buildGoogleFlightsUrl } from './urlBuilder';
 
 const HARD_SCRAPE_TIMEOUT_MS = 30_000;
-const POST_FILTER_WAIT_TIMEOUT_MS = 3_500;
 const MAX_RAW_PAYLOAD_BYTES = 50 * 1024; // 50 KB cap
 
 export interface ScrapeExecutionResult {
@@ -71,16 +70,43 @@ async function dismissConsentIfPresent(page: Page): Promise<void> {
   }
 }
 
+function formatFlightLogLabel(req: ScrapeRequest): string | null {
+  if (req.legs && req.legs.length > 0) {
+    return req.legs.map((leg) => `${leg.airline}${leg.flightNumber}`).join('/');
+  }
+  if (req.airline || req.flightNumber) {
+    return `${req.airline ?? ''}${req.flightNumber ?? ''}`;
+  }
+  return null;
+}
+
+async function expandMoreFlightsIfPresent(page: Page): Promise<boolean> {
+  try {
+    const moreTriggers = [
+      page.locator('button[aria-label*="more flights" i]').first(),
+      page.locator('button:has-text("View more flights")').first(),
+      page.locator('button:has-text("More flights")').first(),
+    ];
+
+    for (const trigger of moreTriggers) {
+      const visible = await trigger.isVisible().catch(() => false);
+      if (!visible) continue;
+      await trigger.click({ timeout: 2500 }).catch(() => null);
+      return true;
+    }
+  } catch {
+    // Best-effort expansion of collapsed "Other flights" section
+  }
+  return false;
+}
+
 async function performBrowserScrape(
   req: ScrapeRequest,
   apiKeyId: number | null
 ): Promise<ScrapeExecutionResult> {
   const startedAt = Date.now();
   const routeLabel = `${formatLocationDisplay(req.origin)} -> ${formatLocationDisplay(req.destination)}`;
-  const flightLabel =
-    req.airline || req.flightNumber
-      ? `${req.airline ?? ''}${req.flightNumber ?? ''}`
-      : null;
+  const flightLabel = formatFlightLogLabel(req);
 
   // Re-check global pause, rate limits & circuit breaker immediately before launching a page
   const preCheck = checkPreScrapeAllowance();
@@ -141,64 +167,67 @@ async function performBrowserScrape(
     const postFilterShoppingPayloads: string[] = [];
     const allShoppingPayloads: string[] = [];
     const otherDataPayloads: string[] = [];
+    const pendingShoppingReads = new Set<Promise<void>>();
     let sawUnfilteredShopping = false;
-    let resolvePostFilter: (() => void) | null = null;
+    let expandingMoreFlights = false;
 
-    const postFilterReadyPromise = new Promise<void>((resolve) => {
-      resolvePostFilter = resolve;
-    });
+    const onResponse = (res: import('playwright').Response) => {
+      const resUrl = res.url();
+      const isShoppingRpc = resUrl.includes('GetShoppingResults');
+      const isFrontendDataRpc = resUrl.includes('/_/FlightsFrontendUi/data/');
+      if (!isShoppingRpc && !isFrontendDataRpc) {
+        return;
+      }
 
-    const onResponse = async (res: import('playwright').Response) => {
-      try {
-        const resUrl = res.url();
-        const isShoppingRpc = resUrl.includes('GetShoppingResults');
-        const isFrontendDataRpc = resUrl.includes('/_/FlightsFrontendUi/data/');
-        if (!isShoppingRpc && !isFrontendDataRpc) {
-          return;
+      // Ignore non-itinerary background RPCs (calendar price graphs, price insights, explore teasers)
+      if (
+        /GetCalendar|PriceInsights|Explore|Autocomplete|Location/i.test(resUrl)
+      ) {
+        return;
+      }
+
+      const readTask = (async () => {
+        try {
+          const bodyText = await res.text();
+          if (!bodyText || bodyText.length <= 100) {
+            return;
+          }
+
+          if (!isShoppingRpc) {
+            otherDataPayloads.push(bodyText);
+            return;
+          }
+
+          allShoppingPayloads.push(bodyText);
+
+          if (!enforceBasicExclusion) {
+            postFilterShoppingPayloads.push(bodyText);
+            return;
+          }
+
+          const postData = res.request().postData();
+          const inspection = inspectShoppingResponse(bodyText, postData);
+
+          if (inspection.hasExplicitExclusion || expandingMoreFlights) {
+            postFilterShoppingPayloads.push(bodyText);
+            return;
+          }
+
+          // Reject any GetShoppingResults payload that does not explicitly confirm
+          // Basic Economy exclusion (including baseline unfiltered responses).
+          sawUnfilteredShopping = true;
+        } catch {
+          // Ignore streaming or aborted responses
         }
+      })();
 
-        // Ignore non-itinerary background RPCs (calendar price graphs, price insights, explore teasers)
-        if (
-          /GetCalendar|PriceInsights|Explore|Autocomplete|Location/i.test(
-            resUrl
-          )
-        ) {
-          return;
-        }
+      pendingShoppingReads.add(readTask);
+      readTask.finally(() => pendingShoppingReads.delete(readTask));
+    };
 
-        const bodyText = await res.text();
-        if (!bodyText || bodyText.length <= 100) {
-          return;
-        }
-
-        if (!isShoppingRpc) {
-          otherDataPayloads.push(bodyText);
-          return;
-        }
-
-        allShoppingPayloads.push(bodyText);
-
-        if (!enforceBasicExclusion) {
-          postFilterShoppingPayloads.push(bodyText);
-          resolvePostFilter?.();
-          return;
-        }
-
-        const postData = res.request().postData();
-        const inspection = inspectShoppingResponse(bodyText, postData);
-
-        if (inspection.hasExplicitExclusion) {
-          postFilterShoppingPayloads.push(bodyText);
-          resolvePostFilter?.();
-          return;
-        }
-
-        // Reject any GetShoppingResults payload that does not explicitly confirm
-        // Basic Economy exclusion (including baseline unfiltered responses and
-        // secondary pagination/refresh RPCs without exclusion tokens).
-        sawUnfilteredShopping = true;
-      } catch {
-        // Ignore streaming or aborted responses
+    const flushPendingShoppingReads = async () => {
+      while (pendingShoppingReads.size > 0) {
+        await Promise.allSettled(Array.from(pendingShoppingReads));
       }
     };
 
@@ -213,28 +242,52 @@ async function performBrowserScrape(
 
       await dismissConsentIfPresent(activePage);
 
+      // Wait deterministically for either flight result cards or an explicit empty-state banner
+      // to render in the main view instead of guessing with fixed timeouts.
       await activePage
-        .waitForLoadState('networkidle', { timeout: 6_000 })
+        .waitForFunction(
+          () => {
+            const main = document.querySelector('div[role="main"]');
+            if (!main) return false;
+            if (main.querySelector('ul.Rk10dc > li')) return true;
+            const text = (main as HTMLElement).innerText || '';
+            return /no\s+(?:matching\s+)?(?:flights|results)\s+found|no\s+options\s+match/i.test(
+              text
+            );
+          },
+          { timeout: HARD_SCRAPE_TIMEOUT_MS }
+        )
         .catch(() => null);
 
       await activePage.waitForTimeout(settings.settleDelayMs);
+      await flushPendingShoppingReads();
 
       let html = await activePage.content();
       let ds1Payload = extractDs1JsonFromHtml(html);
 
-      // Fast path (~4s): SSR ds:1 came directly from the excludeBasicEconomy URL,
-      // and verified post-filter GetShoppingResults XHRs already carry explicit exclusion.
-      // Never parse unverified allShoppingPayloads when enforceBasicExclusion is true.
+      // Merge all verified GetShoppingResults chunks alongside ds:1 so both
+      // "Best flights" and "Other flights" (2-stop / 3-stop layovers) are retained.
       const buildCandidates = (
         filteredXhrs: string[],
-        currentDs1: string | null
+        currentDs1: string | null,
+        domConfirmedStandard = false
       ) => {
         if (enforceBasicExclusion) {
-          if (filteredXhrs.length > 0) {
-            const latestFiltered = filteredXhrs[filteredXhrs.length - 1];
+          const acceptedXhrs =
+            filteredXhrs.length > 0
+              ? filteredXhrs
+              : domConfirmedStandard
+                ? allShoppingPayloads
+                : [];
+
+          if (acceptedXhrs.length > 0) {
+            const structured: string[] = [...acceptedXhrs];
+            if (currentDs1) {
+              structured.push(currentDs1);
+            }
             return {
-              structured: [latestFiltered],
-              diagnostic: [latestFiltered],
+              structured,
+              diagnostic: [...acceptedXhrs],
             };
           }
           const structured: string[] = [];
@@ -252,11 +305,13 @@ async function performBrowserScrape(
         }
 
         if (allShoppingPayloads.length > 0) {
-          const latestShopping =
-            allShoppingPayloads[allShoppingPayloads.length - 1];
+          const structured: string[] = [...allShoppingPayloads];
+          if (currentDs1) {
+            structured.push(currentDs1);
+          }
           return {
-            structured: [latestShopping],
-            diagnostic: [latestShopping],
+            structured,
+            diagnostic: [...allShoppingPayloads],
           };
         }
         const structured: string[] = [];
@@ -267,31 +322,104 @@ async function performBrowserScrape(
         return { structured, diagnostic: [...structured] };
       };
 
+      const initialDomStandard =
+        enforceBasicExclusion && postFilterShoppingPayloads.length === 0
+          ? await isStandardEconomyActiveInDom(activePage)
+          : false;
+
       let { structured: structuredCandidates, diagnostic: rawDiagnosticPayloads } =
-        buildCandidates(postFilterShoppingPayloads, ds1Payload);
+        buildCandidates(postFilterShoppingPayloads, ds1Payload, initialDomStandard);
 
       let extracted = parseStructuredPayload(structuredCandidates, req);
 
-      // Slow-hydration recovery: only if SSR ds:1 yielded 0 itineraries and no verified
-      // post-filter XHR has arrived yet, verify/activate the UI filter and wait briefly.
+      // UI filter recovery: only if initial extraction yielded 0 itineraries and no verified
+      // post-filter XHR arrived, verify/activate the UI filter and await its response.
       if (
         enforceBasicExclusion &&
         extracted.length === 0 &&
         postFilterShoppingPayloads.length === 0
       ) {
+        const filterResponsePromise = activePage
+          .waitForResponse(
+            (res) =>
+              res.url().includes('GetShoppingResults') && res.status() === 200,
+            { timeout: Math.max(settings.settleDelayMs * 2, 5000) }
+          )
+          .catch(() => null);
         const uiActivated =
           await ensureStandardEconomyFilterActive(activePage);
         if (sawUnfilteredShopping || uiActivated) {
-          await Promise.race([
-            postFilterReadyPromise,
-            activePage.waitForTimeout(POST_FILTER_WAIT_TIMEOUT_MS),
-          ]);
+          await filterResponsePromise;
+          await flushPendingShoppingReads();
           html = await activePage.content();
           ds1Payload = extractDs1JsonFromHtml(html);
-          const rebuilt = buildCandidates(postFilterShoppingPayloads, ds1Payload);
+          const rebuilt = buildCandidates(
+            postFilterShoppingPayloads,
+            ds1Payload,
+            uiActivated
+          );
           structuredCandidates = rebuilt.structured;
           rawDiagnosticPayloads = rebuilt.diagnostic;
           extracted = parseStructuredPayload(structuredCandidates, req);
+        }
+      }
+
+      // Expand collapsed "View more flights" ("Other flights") whenever layovers are allowed
+      // so 2-stop (3-leg) and 3-stop (4-leg) itineraries are included in route and leg searches.
+      const needsSpecificFlightMatch = Boolean(
+        (req.legs && req.legs.length >= 2) || req.flightNumber
+      );
+      if (
+        req.maxStops !== 0 &&
+        (extracted.length > 0 || needsSpecificFlightMatch)
+      ) {
+        const prevShoppingCount = allShoppingPayloads.length;
+        const prevDomCardCount = await activePage
+          .locator('div[role="main"] ul.Rk10dc > li')
+          .count()
+          .catch(() => 0);
+        const expandTimeoutMs = Math.max(settings.settleDelayMs * 2, 5000);
+        const moreResponsePromise = activePage
+          .waitForResponse(
+            (res) =>
+              res.url().includes('GetShoppingResults') && res.status() === 200,
+            { timeout: expandTimeoutMs }
+          )
+          .catch(() => null);
+
+        expandingMoreFlights = true;
+        try {
+          const expanded = await expandMoreFlightsIfPresent(activePage);
+          if (expanded) {
+            await Promise.race([
+              moreResponsePromise,
+              activePage
+                .waitForFunction(
+                  (prevCount) =>
+                    document.querySelectorAll('div[role="main"] ul.Rk10dc > li')
+                      .length > prevCount,
+                  prevDomCardCount,
+                  { timeout: expandTimeoutMs }
+                )
+                .catch(() => null),
+            ]);
+            await flushPendingShoppingReads();
+            if (allShoppingPayloads.length > prevShoppingCount) {
+              const domStandardAfterExpand = enforceBasicExclusion
+                ? await isStandardEconomyActiveInDom(activePage)
+                : false;
+              const rebuiltAfterExpand = buildCandidates(
+                postFilterShoppingPayloads,
+                ds1Payload,
+                domStandardAfterExpand
+              );
+              structuredCandidates = rebuiltAfterExpand.structured;
+              rawDiagnosticPayloads = rebuiltAfterExpand.diagnostic;
+              extracted = parseStructuredPayload(structuredCandidates, req);
+            }
+          }
+        } finally {
+          expandingMoreFlights = false;
         }
       }
 
@@ -577,10 +705,7 @@ export async function executeQueuedScrape(
     const status = isPaused ? 'Paused' : 'RateLimited';
     const httpStatus = isPaused ? 503 : 429;
     const routeLabel = `${formatLocationDisplay(req.origin)} -> ${formatLocationDisplay(req.destination)}`;
-    const flightLabel =
-      req.airline || req.flightNumber
-        ? `${req.airline ?? ''}${req.flightNumber ?? ''}`
-        : null;
+    const flightLabel = formatFlightLogLabel(req);
 
     const response: ScrapeResponse = {
       status,

@@ -3,6 +3,14 @@ export type CabinClass = 'economy' | 'premium_economy' | 'business' | 'first';
 export type FareTier = 'Basic' | 'Standard';
 
 export type ScrapeStatus = 'Success' | 'SoldOut' | 'RateLimited' | 'Paused' | 'Error';
+export interface ScrapeLegInput {
+  airline: string;
+  bookingAirline?: string | null;
+  flightNumber: string;
+  origin: string;
+  destination: string;
+}
+
 export interface ScrapeRequest {
   origin: string | string[];
   destination: string | string[];
@@ -15,6 +23,7 @@ export interface ScrapeRequest {
   excludedAirlines?: string[];
   airline?: string;
   flightNumber?: string;
+  legs?: ScrapeLegInput[];
   includeRaw?: boolean;
 }
 

@@ -590,6 +590,13 @@ function deduplicateItineraries(items: RouteItinerary[]): RouteItinerary[] {
   const unique: RouteItinerary[] = [];
 
   for (const item of items) {
+    const legSignature =
+      item.legs && item.legs.length > 0
+        ? item.legs
+            .map((leg) => `${leg.airline}${leg.flightNumber}:${leg.origin}-${leg.destination}`)
+            .join('>')
+        : '';
+
     const key = [
       item.airline,
       item.flightNumber,
@@ -598,6 +605,7 @@ function deduplicateItineraries(items: RouteItinerary[]): RouteItinerary[] {
       item.departureTime,
       item.arrivalTime,
       item.price,
+      legSignature,
     ].join('|');
 
     if (!seen.has(key)) {
@@ -607,6 +615,19 @@ function deduplicateItineraries(items: RouteItinerary[]): RouteItinerary[] {
   }
 
   return unique;
+}
+
+function parseFlightToken(
+  rawToken: string,
+  fallbackCarrier?: string
+): { targetCarrier?: string; targetNum: string } {
+  const trimmed = rawToken.trim().toUpperCase().replace(/\s+/g, '');
+  const embeddedCarrierMatch = trimmed.match(
+    /^(?=[A-Z0-9]*[A-Z])([A-Z0-9]{2})\d+[A-Z]?$/
+  );
+  const targetCarrier = embeddedCarrierMatch?.[1] ?? fallbackCarrier;
+  const targetNum = cleanFlightNumber(trimmed, targetCarrier);
+  return { targetCarrier, targetNum };
 }
 
 export function applyScrapeFilters(
@@ -619,25 +640,84 @@ export function applyScrapeFilters(
         return false;
       }
 
+      const operatingCarriers =
+        item.legs && item.legs.length > 0
+          ? item.legs.map((leg) => leg.airline)
+          : [item.airline];
+
       if (req.includedAirlines && req.includedAirlines.length > 0) {
-        if (!req.includedAirlines.includes(item.airline)) {
+        const allAllowed = operatingCarriers.every((code) =>
+          req.includedAirlines!.includes(code)
+        );
+        if (!allAllowed) {
           return false;
         }
       }
 
       if (req.excludedAirlines && req.excludedAirlines.length > 0) {
-        if (req.excludedAirlines.includes(item.airline)) {
+        const hasExcluded = operatingCarriers.some((code) =>
+          req.excludedAirlines!.includes(code)
+        );
+        if (hasExcluded) {
           return false;
         }
       }
 
+      if (req.legs && req.legs.length > 0) {
+        if (!item.legs || item.legs.length !== req.legs.length) {
+          return false;
+        }
+
+        for (let i = 0; i < req.legs.length; i++) {
+          const targetLeg = req.legs[i];
+          const actualLeg = item.legs[i];
+          const targetCarrier = normalizeAirlineCode(targetLeg.airline);
+          const targetNum = cleanFlightNumber(targetLeg.flightNumber, targetCarrier);
+
+          if (
+            actualLeg.origin !== targetLeg.origin ||
+            actualLeg.destination !== targetLeg.destination ||
+            actualLeg.airline !== targetCarrier ||
+            actualLeg.flightNumber !== targetNum
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      }
+
       if (req.flightNumber) {
-        const trimmedFlight = req.flightNumber.trim().toUpperCase().replace(/\s+/g, '');
-        const embeddedCarrierMatch = trimmedFlight.match(
-          /^(?=[A-Z0-9]*[A-Z])([A-Z0-9]{2})\d+[A-Z]?$/
+        const flightTokens = req.flightNumber
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+        if (flightTokens.length > 1) {
+          const parsedTokens = flightTokens.map((token, idx) =>
+            parseFlightToken(token, idx === 0 ? req.airline : undefined)
+          );
+          if (!item.legs || item.legs.length !== parsedTokens.length) {
+            return false;
+          }
+          for (let i = 0; i < parsedTokens.length; i++) {
+            const { targetCarrier, targetNum } = parsedTokens[i];
+            const actualLeg = item.legs[i];
+            if (
+              !targetNum ||
+              actualLeg.flightNumber !== targetNum ||
+              (targetCarrier && actualLeg.airline !== targetCarrier)
+            ) {
+              return false;
+            }
+          }
+          return true;
+        }
+
+        const { targetCarrier, targetNum } = parseFlightToken(
+          flightTokens[0] ?? req.flightNumber,
+          req.airline
         );
-        const targetCarrier = req.airline ?? embeddedCarrierMatch?.[1];
-        const targetNum = cleanFlightNumber(req.flightNumber, targetCarrier);
 
         if (targetNum) {
           if (item.legs && item.legs.length > 0) {

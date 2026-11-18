@@ -206,6 +206,21 @@ function inspectDecodedQueryToken(token: string): ShoppingPayloadInspection | nu
             f12Exclusion = true;
           }
 
+          // URL-initiated "Economy (exclude Basic)" (tfs field 25 = 1 + tfu=EgYIABAAGAA)
+          // serializes into f12.field 3.field 1 as nested message { field 1: 3, field 2: 1 }.
+          const f12Sub3Sub1Bytes = getFirstBytes(f12Sub3Fields, 1);
+          if (f12Sub3Sub1Bytes) {
+            const f12Sub3Sub1Fields = parseProtoMessage(f12Sub3Sub1Bytes);
+            if (
+              f12Sub3Sub1Fields &&
+              (getFirstVarint(f12Sub3Sub1Fields, 1) === 3 ||
+                getFirstVarint(f12Sub3Sub1Fields, 18) === 1 ||
+                getFirstVarint(f12Sub3Sub1Fields, 25) === 1)
+            ) {
+              f12Exclusion = true;
+            }
+          }
+
           // Unfiltered economy baseline in GetShoppingResults has cabin=1 (field 2)
           // and only baseline keys {1, 2, 17} with no Basic Economy exclusion field.
           const cabinVal = getFirstVarint(f12Sub3Fields, 2);
@@ -306,6 +321,50 @@ function extractCandidatesFromRawText(rawText: string): string[] {
   return candidates;
 }
 
+function hasExcludeBasicFlagInFReq(fReq: string): boolean {
+  const inspectNode = (node: unknown, depth = 0): boolean => {
+    if (depth > 5 || !Array.isArray(node)) return false;
+
+    // Google Flights GetShoppingResults payload shape:
+    // [headerTuple, queryTuple, 0, 0, 0, 1] where queryTuple[28] === 1 signals "Economy (exclude Basic)"
+    const queryTuple = node[1];
+    if (
+      Array.isArray(queryTuple) &&
+      queryTuple.length > 28 &&
+      queryTuple[28] === 1
+    ) {
+      return true;
+    }
+
+    for (const entry of node) {
+      if (Array.isArray(entry)) {
+        if (inspectNode(entry, depth + 1)) {
+          return true;
+        }
+      } else if (typeof entry === 'string' && entry.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(entry);
+          if (inspectNode(parsed, depth + 1)) {
+            return true;
+          }
+        } catch {
+          // Ignore non-JSON string elements
+        }
+      }
+    }
+
+    return false;
+  };
+
+  try {
+    const outer = JSON.parse(fReq);
+    return inspectNode(outer);
+  } catch {
+    // Ignore non-JSON or unexpected f.req shapes
+  }
+  return false;
+}
+
 export function inspectShoppingResponse(
   responseBody: string,
   requestPostData?: string | null
@@ -316,6 +375,14 @@ export function inspectShoppingResponse(
       const params = new URLSearchParams(requestPostData);
       const fReq = params.get('f.req');
       if (fReq) {
+        if (hasExcludeBasicFlagInFReq(fReq)) {
+          return {
+            hasValidQueryToken: true,
+            hasExplicitExclusion: true,
+            isBaselineUnfilteredEconomy: false,
+            filterSignature: 'freq:q28=1',
+          };
+        }
         requestCandidates.push(...extractCandidatesFromRawText(fReq));
       }
     } catch {
