@@ -1,9 +1,15 @@
 # OpenFareScraper Changelog
 
-*Last updated: 2026-11-16*  
-*Current Version: v0.4.5*
+*Last updated: 2026-11-18*  
+*Current Version: v0.4.6*
 
 ## Changelog
+
+### Release v0.4.6
+- Added Multi-stop itinerary extraction and matching for 1-stop, 2-stop, and 3-stop flights (up to 4 legs) via `legs[]` or multi-segment `flightNumber` values (e.g., `"UA219/UA1283/UA669"`).
+- Fixed scroll to the results footer and retry `"View more flights"` clicks when the initial click does not dispatch `GetShoppingResults`, expanding `"Other flights"` across Economy Standard, Economy Basic, and Business.
+- Fixed xompare pre- and post-expansion `GetShoppingResults` payload counts to prevent false retries when initial flights load in `ds:1`.
+- Fixed defer the plain-text DOM fallback until all structured retry attempts complete so partial renders do not mask retries.
 
 ### Release v0.4.5
 - Renamed project, package, and Docker service/image/container to `OpenFareScraper` (`thebronway/openfarescraper`).

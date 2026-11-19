@@ -156,16 +156,19 @@ const scrapeLegSchema = z.object({
       IATA_CARRIER_REGEX,
       'Leg airline must be a 2-character uppercase IATA carrier code (e.g. AA).'
     ),
-  bookingAirline: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(
-      IATA_CARRIER_REGEX,
-      'Leg bookingAirline must be a 2-character uppercase IATA carrier code.'
-    )
-    .nullable()
-    .optional(),
+  bookingAirline: z.preprocess(
+    (val) => (typeof val === 'string' && val.trim() === '' ? null : val),
+    z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(
+        IATA_CARRIER_REGEX,
+        'Leg bookingAirline must be a 2-character uppercase IATA carrier code.'
+      )
+      .nullable()
+      .optional()
+  ),
   flightNumber: z
     .string()
     .trim()

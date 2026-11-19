@@ -82,17 +82,33 @@ function formatFlightLogLabel(req: ScrapeRequest): string | null {
 
 async function expandMoreFlightsIfPresent(page: Page): Promise<boolean> {
   try {
-    const moreTriggers = [
-      page.locator('button[aria-label*="more flights" i]').first(),
-      page.locator('button:has-text("View more flights")').first(),
-      page.locator('button:has-text("More flights")').first(),
+    await page
+      .evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+      })
+      .catch(() => null);
+    await page.waitForTimeout(200);
+
+    const selectorList = [
+      'button[aria-label*="more flights" i]',
+      'button:has-text("View more flights")',
+      'button:has-text("More flights")',
     ];
 
-    for (const trigger of moreTriggers) {
-      const visible = await trigger.isVisible().catch(() => false);
-      if (!visible) continue;
-      await trigger.click({ timeout: 2500 }).catch(() => null);
-      return true;
+    for (const selector of selectorList) {
+      const candidates = page.locator(selector);
+      const count = await candidates.count().catch(() => 0);
+
+      for (let i = 0; i < count; i++) {
+        const btn = candidates.nth(i);
+        const visible = await btn.isVisible().catch(() => false);
+        const box = visible ? await btn.boundingBox().catch(() => null) : null;
+        if (visible && box && box.width > 0 && box.height > 0) {
+          await btn.scrollIntoViewIfNeeded().catch(() => null);
+          await btn.click({ force: true, timeout: 4000 }).catch(() => null);
+          return true;
+        }
+      }
     }
   } catch {
     // Best-effort expansion of collapsed "Other flights" section
@@ -169,6 +185,8 @@ async function performBrowserScrape(
     const otherDataPayloads: string[] = [];
     const pendingShoppingReads = new Set<Promise<void>>();
     let sawUnfilteredShopping = false;
+    let sawShoppingError = false;
+    let moreXhrFailed = false;
     let expandingMoreFlights = false;
 
     const onResponse = (res: import('playwright').Response) => {
@@ -195,6 +213,11 @@ async function performBrowserScrape(
 
           if (!isShoppingRpc) {
             otherDataPayloads.push(bodyText);
+            return;
+          }
+
+          if (bodyText.includes('ErrorResponse')) {
+            sawShoppingError = true;
             return;
           }
 
@@ -374,11 +397,16 @@ async function performBrowserScrape(
         (extracted.length > 0 || needsSpecificFlightMatch)
       ) {
         const prevShoppingCount = allShoppingPayloads.length;
-        const prevDomCardCount = await activePage
-          .locator('div[role="main"] ul.Rk10dc > li')
-          .count()
-          .catch(() => 0);
-        const expandTimeoutMs = Math.max(settings.settleDelayMs * 2, 5000);
+        const prevValidCount = enforceBasicExclusion
+          ? postFilterShoppingPayloads.length
+          : allShoppingPayloads.length;
+        const expandTimeoutMs = Math.max(settings.settleDelayMs * 2, 10000);
+        const moreRequestPromise = activePage
+          .waitForRequest(
+            (r) => r.url().includes('GetShoppingResults'),
+            { timeout: 3000 }
+          )
+          .catch(() => null);
         const moreResponsePromise = activePage
           .waitForResponse(
             (res) =>
@@ -391,19 +419,32 @@ async function performBrowserScrape(
         try {
           const expanded = await expandMoreFlightsIfPresent(activePage);
           if (expanded) {
-            await Promise.race([
-              moreResponsePromise,
-              activePage
-                .waitForFunction(
-                  (prevCount) =>
-                    document.querySelectorAll('div[role="main"] ul.Rk10dc > li')
-                      .length > prevCount,
-                  prevDomCardCount,
-                  { timeout: expandTimeoutMs }
+            let dispatchedMoreRequest = await moreRequestPromise;
+            if (!dispatchedMoreRequest) {
+              const retryReqPromise = activePage
+                .waitForRequest(
+                  (r) => r.url().includes('GetShoppingResults'),
+                  { timeout: 2000 }
                 )
-                .catch(() => null),
-            ]);
+                .catch(() => null);
+              const reclicked = await expandMoreFlightsIfPresent(activePage);
+              if (reclicked) {
+                dispatchedMoreRequest = await retryReqPromise;
+              }
+            }
+            if (dispatchedMoreRequest) {
+              await moreResponsePromise;
+              await activePage
+                .waitForLoadState('networkidle', { timeout: 5000 })
+                .catch(() => null);
+            }
             await flushPendingShoppingReads();
+            const postValidCount = enforceBasicExclusion
+              ? postFilterShoppingPayloads.length
+              : allShoppingPayloads.length;
+            if (dispatchedMoreRequest && postValidCount <= prevValidCount) {
+              moreXhrFailed = true;
+            }
             if (allShoppingPayloads.length > prevShoppingCount) {
               const domStandardAfterExpand = enforceBasicExclusion
                 ? await isStandardEconomyActiveInDom(activePage)
@@ -423,20 +464,19 @@ async function performBrowserScrape(
         }
       }
 
-      if (extracted.length === 0) {
-        const domAllowed =
-          !enforceBasicExclusion ||
-          postFilterShoppingPayloads.length > 0 ||
-          (await isStandardEconomyActiveInDom(activePage));
-        if (domAllowed) {
-          extracted = await parseItinerariesFromDom(activePage, req);
-        }
-      }
+      const validShoppingCount = enforceBasicExclusion
+        ? postFilterShoppingPayloads.length
+        : allShoppingPayloads.length;
+      const shouldRetry =
+        sawShoppingError ||
+        moreXhrFailed ||
+        extracted.length === 0;
 
       return {
         httpStatus,
         itineraries: extracted,
         rawPayloads: rawDiagnosticPayloads,
+        shouldRetry,
       };
     } finally {
       activePage.off('response', onResponse);
@@ -448,13 +488,36 @@ async function performBrowserScrape(
     page.setDefaultTimeout(HARD_SCRAPE_TIMEOUT_MS);
     page.setDefaultNavigationTimeout(HARD_SCRAPE_TIMEOUT_MS);
 
-    const primaryAttempt = await runNavigationAttempt(
+    const maxNavigationAttempts = 3;
+    let primaryAttempt = await runNavigationAttempt(
       page,
       targetUrl,
       requireBasicExclusion
     );
+    for (
+      let attempt = 2;
+      attempt <= maxNavigationAttempts &&
+      primaryAttempt.shouldRetry &&
+      primaryAttempt.httpStatus !== 429 &&
+      primaryAttempt.httpStatus !== 403;
+      attempt++
+    ) {
+      primaryAttempt = await runNavigationAttempt(
+        page,
+        targetUrl,
+        requireBasicExclusion
+      );
+    }
     let itineraries = primaryAttempt.itineraries;
     interceptedPayloads = primaryAttempt.rawPayloads;
+
+    if (itineraries.length === 0) {
+      const domAllowed =
+        !requireBasicExclusion || (await isStandardEconomyActiveInDom(page));
+      if (domAllowed) {
+        itineraries = await parseItinerariesFromDom(page, req);
+      }
+    }
 
     const blockCheck = await inspectForUpstreamBlock(
       page,

@@ -672,12 +672,22 @@ export function applyScrapeFilters(
           const targetLeg = req.legs[i];
           const actualLeg = item.legs[i];
           const targetCarrier = normalizeAirlineCode(targetLeg.airline);
-          const targetNum = cleanFlightNumber(targetLeg.flightNumber, targetCarrier);
+          const targetBookingCarrier = targetLeg.bookingAirline
+            ? normalizeAirlineCode(targetLeg.bookingAirline)
+            : null;
+          const targetNum = cleanFlightNumber(
+            targetLeg.flightNumber,
+            targetCarrier
+          );
+          const carrierMatches =
+            actualLeg.airline === targetCarrier ||
+            (targetBookingCarrier !== null &&
+              actualLeg.airline === targetBookingCarrier);
 
           if (
             actualLeg.origin !== targetLeg.origin ||
             actualLeg.destination !== targetLeg.destination ||
-            actualLeg.airline !== targetCarrier ||
+            !carrierMatches ||
             actualLeg.flightNumber !== targetNum
           ) {
             return false;
