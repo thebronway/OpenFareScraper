@@ -1,7 +1,7 @@
 # OpenFareScraper
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-v0.4.6-green.svg)
+![Version](https://img.shields.io/badge/version-v0.4.7-green.svg)
 ![Docker](https://img.shields.io/docker/pulls/thebronway/openfarescraper?logo=docker)
 
 ### A Self-hosted headless Chromium Google Flights scraper microservice with a REST API. Built for [FlightSentry](https://github.com/thebronway/FlightSentry), compatible flight trackers, and custom API integrations.

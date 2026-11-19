@@ -1,7 +1,7 @@
 # OpenFareScraper Roadmap
 
 *Last updated: 2026-11-18*  
-*Current Version: v0.4.6*
+*Current Version: v0.4.7*
 
 ## Overview
 Tracks planned features, improvements, and technical debt for OpenFareScraper.
