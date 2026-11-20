@@ -9,8 +9,9 @@ Tracks planned features, improvements, and technical debt for OpenFareScraper.
 ## Release Roadmap
 
 ### Release v0.5.0: Security & Session Management
-- Add username/password authentication alongside optional `AUTH_USERNAME` / `AUTH_PASSWORD` env-managed credentials and optional auth disable flow (`AuthStatusCard`, `DisableAuthModal`).
-- Add WebAuthn passkey registration, inline rename, synced badge, and login (`@simplewebauthn/server` & `@simplewebauthn/browser`), including secure-context and raw-IP hostname notices.
+- Keep authentication mandatory (no unauthenticated mode) while upgrading login and `/settings/security` credentials from password-only to **username + password**.
+- Add container environment variable recovery/override (`ADMIN_USERNAME` / `ADMIN_PASSWORD`) on startup so admins can reset locked-out credentials via Docker env without wiping SQLite data (invalidating existing sessions on reset).
+- Add WebAuthn passkey registration, inline rename, synced badge, and sign-in (`@simplewebauthn/server` & `@simplewebauthn/browser`), including secure-context and raw-IP hostname notices.
 - Migrate from stateless HMAC cookies to SQLite-backed sessions with configurable session lifetime, device/IP inspection, single-session revoke, and sign-out-other-sessions (`ActiveSessionsCard`).
 
 ### Release v0.5.1: Update & Announcement Banners
