@@ -22,8 +22,8 @@ OpenFareScraper exposes an authenticated JSON-over-HTTP REST API that executes h
 ### 1.3 Execution Model & Client Timeouts
 Unlike stateless REST APIs, `POST /api/v1/scrape` drives a single persistent Chromium browser context protected by anti-bot guardrails:
 1. **Serial FIFO Queue (`concurrency = 1`):** Concurrent requests from one or more callers are queued in arrival order and executed strictly one at a time.
-2. **Randomized Jitter:** Prior to browser navigation, the worker sleeps for a configured random interval (`minJitterMs` to `maxJitterMs`, default `1500ms`–`4500ms`).
-3. **Browser Navigation & Hydration:** Chromium navigates to the constructed Google Flights `/travel/flights/search?tfs=...` URL, waits for network/DOM settlement, and extracts `AF_initDataCallback` (`ds:1`) structured tuples with DOM fallback.
+2. **Randomized Jitter:** Prior to browser navigation, the worker sleeps for a configured random interval (`minJitterMs` to `maxJitterMs`, default `4000ms`–`9000ms`).
+3. **Browser Navigation & Hydration:** Chromium navigates to the constructed Google Flights `/travel/flights/search?tfs=...` URL, intercepts `GetShoppingResults` responses (expanding `"View more flights"` / `"Other flights"` when `maxStops !== 0`), and extracts `AF_initDataCallback` (`ds:1`) structured tuples with DOM fallback.
 
 **Recommended Consumer HTTP Timeout:** Configure client read timeouts to **at least `90,000 ms` (90 seconds)** to accommodate queue wait time behind active jobs, jitter delay, and Chromium page load.
 
@@ -89,7 +89,7 @@ Returns service liveness, version metadata, circuit breaker state, current FIFO 
 | :--- | :--- | :--- | :--- |
 | `status` | `string` | No | Service health indicator: `"ok"`, `"rate_limited"`, `"cooldown"`, or `"paused"`. |
 | `state` | `string` | No | Explicit operational state: `"ready"`, `"rate_limited"`, `"cooldown"`, or `"paused"`. |
-| `version` | `string` | No | Semantic version of the running scraper service from `package.json` (e.g., `"0.4.5"`). |
+| `version` | `string` | No | Semantic version of the running scraper service from `package.json` (e.g., `"0.4.8"`). |
 | `apiVersion` | `string` | No | REST API major version identifier (`"v1"`). |
 | `paused` | `boolean` | No | `true` when Global Pause is enabled by an administrator in the Admin Console (read-only for API key users); `false` otherwise. |
 | `circuitBreakerActive` | `boolean` | No | `true` if Google anti-bot protection recently tripped cooldown; `false` otherwise. |
@@ -113,20 +113,20 @@ curl -s -X GET "http://localhost:4001/api/v1/health" \
 ```json
 {
   "status": "ok",
-  "version": "0.1.0",
-  "timestamp": "2026-11-13T14:15:00.412Z",
+  "state": "ready",
+  "version": "0.4.8",
+  "apiVersion": "v1",
+  "paused": false,
   "circuitBreakerActive": false,
-  "cooldownUntil": null,
+  "rateLimited": false,
+  "statusReason": null,
+  "retryAfter": null,
   "queueDepth": 0,
-  "limits": {
-    "maxRequestsPerHour": 20,
-    "maxRequestsPerDay": 150
-  },
   "usage": {
-    "requestsLastHour": 3,
-    "requestsLast24Hours": 18,
-    "remainingHour": 17,
-    "remainingDay": 132
+    "hourlyUsed": 3,
+    "hourlyLimit": 20,
+    "dailyUsed": 18,
+    "dailyLimit": 150
   }
 }
 ```
@@ -159,39 +159,43 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
 | `currency` | `string` | No | `"USD"` | `^[A-Z]{3}$` (ISO 4217) | 3-letter currency code passed to Google Flights (`curr` parameter). |
 | `maxStops` | `integer` | No | `undefined` | Integer `0` through `3` | Maximum allowed connection stops (`0` = nonstop only, `1` = 1 stop or fewer, etc.). Applied post-extraction. |
 | `airline` | `string` | No | `undefined` | `^[A-Z0-9]{2}$` (trimmed, uppercased) | Single 2-character IATA carrier code filter (e.g., `"UA"`, `"F9"`, `"DL"`). |
-| `flightNumber` | `string` | No | `undefined` | `^[A-Z0-9]{1,8}$` (spaces stripped) | Specific flight number filter (e.g., `"687"`, `"UA687"`, or `"UA 687"`). Matches against any operating segment in `itineraries[].legs`. |
-| `includedAirlines` | `string[]` | No | `undefined` | Array of `^[A-Z0-9]{2}$` \vert{} Allowlist of 2-character IATA carrier codes. If provided and non-empty, only itineraries operated by listed carriers are returned. \vert{} \vert{} `excludedAirlines` \vert{} `string[]` \vert{} No \vert{} `undefined` \vert{} Array of `^[A-Z0-9]{2}$` | Denylist of 2-character IATA carrier codes to exclude from results. |
-| `includeRaw` | `boolean` | No | `false` | Boolean | When `true`, includes up to 51,200 bytes of raw `ds:1` / HTML diagnostic text in `meta.rawPayload`. |
+| `flightNumber` | `string` | No | `undefined` | `^[A-Za-z0-9]{1,8}(?:,[A-Za-z0-9]{1,8}){0,3}$` (spaces stripped, uppercased) \vert{} Specific flight number filter (e.g., `"687"`, `"UA687"`, `"UA 687"`) or comma-separated ordered segment list for multi-leg itineraries (e.g., `"UA219,UA1283,UA669"`, up to 4 segments). \vert{} \vert{} `legs` \vert{} `ScrapeLegInput[]` \vert{} No \vert{} `undefined` \vert{} Array of 2–4 contiguous `ScrapeLegInput` segments \vert{} Exact multi-leg segment sequence filter (1-stop to 3-stop itineraries). Takes precedence over `airline` and `flightNumber`. \vert{} \vert{} `includedAirlines` \vert{} `string[]` \vert{} No \vert{} `undefined` \vert{} Array of up to 20 `^[A-Z0-9]{2}$` | Allowlist of 2-character IATA carrier codes. When provided and non-empty, all operating segments in `itineraries[].legs` must belong to listed carriers. |
+| `excludedAirlines` | `string[]` | No | `undefined` | Array of up to 20 `^[A-Z0-9]{2}$` \vert{} Denylist of 2-character IATA carrier codes; excludes itineraries where any operating segment matches. \vert{} \vert{} `includeRaw` \vert{} `boolean` \vert{} No \vert{} `false` \vert{} Boolean \vert{} When `true`, includes up to 51,200 bytes of raw `GetShoppingResults` / `ds:1` diagnostic text in `meta.rawPayload`. \vert{}  #### `ScrapeLegInput` Object Schema (`legs[]`)  When `legs` is supplied, the request validator enforces the following structural rules: * **Length:** Minimum `2` legs (1 stop) and maximum `4` legs (3 stops). * **Boundary Airports:** `legs[0].origin` must match `origin` (or be present in `origin[]`), and `legs[legs.length - 1].destination` must match `destination` (or be present in `destination[]`). * **Contiguous Segments:** Every segment must satisfy `leg.origin !== leg.destination`, and consecutive segments must connect (`legs[i].destination === legs[i + 1].origin`). * **Stop Limit Consistency:** If `maxStops` is also provided, `maxStops` must be greater than or equal to `legs.length - 1`.  \vert{} Field \vert{} Type \vert{} Required \vert{} Constraints & Validation \vert{} Description \vert{} \vert{} :--- \vert{} :--- \vert{} :--- \vert{} :--- \vert{} :--- \vert{} \vert{} `airline` \vert{} `string` \vert{} **Yes** \vert{} `^[A-Z0-9]{2}$` (trimmed, uppercased) | Operating 2-character IATA carrier code for this segment (e.g., `"UA"`, `"OO"`). |
+| `bookingAirline` | `string \| null` | No | `^[A-Z0-9]{2}$` or `null` (blank strings normalize to `null`) \vert{} Optional marketing/codeshare carrier code (e.g., `"UA"` when operated by `"OO"`). Matches if the scraped segment's operating carrier equals either `airline` or `bookingAirline`. \vert{} \vert{} `flightNumber` \vert{} `string` \vert{} **Yes** \vert{} `^[A-Za-z0-9]{1,8}$` (spaces stripped, uppercased) | Segment flight designator with or without carrier prefix (e.g., `"1283"` or `"UA1283"`). |
+| `origin` | `string` | **Yes** | `^[A-Z]{3}$` (trimmed, uppercased) \vert{} 3-letter uppercase IATA departure airport code for this segment. \vert{} \vert{} `destination` \vert{} `string` \vert{} **Yes** \vert{} `^[A-Z]{3}$` (trimmed, uppercased) | 3-letter uppercase IATA arrival airport code for this segment. |
 
 #### Protobuf `tfs` Query Construction & Filter Semantics
 1. **Multi-Airport Array Encoding:** Deduplicated `origin` airport codes (1 to 8) are encoded into outbound protobuf slice `field 13`, and deduplicated `destination` airport codes (1 to 8) are encoded into `field 14` within a single Google Flights navigation (consuming **1 quota unit**). Each returned `RouteItinerary` reports the **specific operating airport** (e.g., `"DFW"` or `"DAL"` → `"JFK"`, `"LGA"`, or `"EWR"`).
 2. **Basic vs. Standard Economy:**
    * `cabinClass: "economy"` + `fareTier: "Basic"` → Omits the Basic Economy exclusion flag; returns lowest available fares including Basic Economy (e.g., Frontier/United/Delta/American Basic).
-   * `cabinClass: "economy"` + `fareTier: "Standard"` → Encodes root protobuf `field 25 = 1` (`Economy (exclude Basic)`) and `tfu=EgYIABAAGAA` in the Google Flights search URL. If an intercontinental route outside North America returns `0` itineraries under `Economy (exclude Basic)`, the scraper automatically falls back to standard `Economy` within the same job.
+   * `cabinClass: "economy"` + `fareTier: "Standard"` → Encodes root protobuf `field 25 = 1` (`Economy (exclude Basic)`) and `tfu=EgYIABAAGAA` in the Google Flights search URL. If an intercontinental route outside the US, US territories, and Canada returns `0` itineraries under `Economy (exclude Basic)`, the scraper automatically falls back to standard `Economy` within the same job.
    * For `premium_economy`, `business`, and `first`, `fareTier` has no restrictive effect.
-3. **Post-Extraction Filter Precedence:** Extracted itineraries are filtered in memory in the following order, then sorted ascending by `price`:
+3. **Multi-Stop Layover Expansion:** Whenever `maxStops !== 0`, the scraper clicks `"View more flights"` (`"Other flights"`) to load collapsed 1-stop, 2-stop, and 3-stop itineraries from `GetShoppingResults` before filtering.
+4. **Post-Extraction Filter Precedence:** Extracted itineraries are validated and filtered in memory in the following order, then sorted ascending by `price`:
    1. `maxStops` (`item.stops <= req.maxStops`)
-   2. `includedAirlines` (`req.includedAirlines.includes(item.airline)`)
-   3. `excludedAirlines` (`!req.excludedAirlines.includes(item.airline)`)
-   4. `airline` / `flightNumber` — when `flightNumber` is provided, matches if **any** segment in `item.legs` matches `leg.flightNumber === normalizedTargetFlightNumber` (and `leg.airline === targetCarrier` when `airline` or a carrier prefix is supplied). When `flightNumber` is omitted and `airline` is provided, matches `item.airline === req.airline`.
+   2. `includedAirlines` (every operating carrier in `item.legs`, or `item.airline` when `legs` is absent, must be in `req.includedAirlines`)
+   3. `excludedAirlines` (no operating carrier in `item.legs`, or `item.airline`, may appear in `req.excludedAirlines`)
+   4. `legs` (when provided) — requires `item.legs.length === req.legs.length` and matches each segment in order on `origin`, `destination`, normalized `flightNumber`, and carrier (`actualLeg.airline === targetCarrier` or `actualLeg.airline === targetBookingCarrier`).
+   5. `airline` / `flightNumber` (when `legs` is omitted):
+      * **Comma-separated `flightNumber` (2–4 tokens, e.g., `"UA219,UA1283"`):** requires `item.legs.length === tokens.length` and matches each segment positionally on flight number and carrier prefix (`req.airline` applies to token 0 if token 0 lacks an embedded carrier prefix).
+      * **Single `flightNumber` (e.g., `"687"` or `"UA687"`):** matches if **any** segment in `item.legs` matches `leg.flightNumber === normalizedTargetFlightNumber` (and `leg.airline === targetCarrier` when `airline` or a carrier prefix is supplied).
+      * **Only `airline` provided:** matches `item.airline === req.airline`.
 
 #### Response Body Schema (`ScrapeResponse`)
 
 | Field | Type | Nullable | Present When | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `status` | `string` | No | Always | Execution outcome enum: `"Success"`, `"SoldOut"`, `"RateLimited"`, `"Paused"`, or `"Error"`. |
-| `provider` | `string` | No | Always | Fixed provider identifier: `"openfarescraper"`. |
+| `price` | `number \| null` | Yes | Always | Lowest `price` among `itineraries`, or `null` when `itineraries` is empty. |
 | `currency` | `string` | No | Always | Normalized 3-letter ISO 4217 currency code of returned prices. |
-| `lowestPrice` | `number \| null` | Yes | Always | Lowest `price` among `itineraries`, or `null` when `itineraries` is empty. |
-| `itineraries` | `RouteItinerary[]` | No | Always | Array of matching flight options sorted ascending by `price`. Empty (`[]`) on `SoldOut`, `RateLimited`, or `Error`. |
+| `leadingAirline` | `string \| null` | Yes | Always | Operating 2-character IATA carrier code of `itineraries[0]` (first segment), or `null` when empty. |
+| `leadingFlightNumber` | `string \| null` | Yes | Always | Numeric flight designator of `itineraries[0]` (first segment), or `null` when empty/unavailable. |
+| `itineraries` | `RouteItinerary[]` | No | Always | Array of matching flight options sorted ascending by `price`. Empty (`[]`) on `SoldOut`, `RateLimited`, `Paused`, or `Error`. |
+| `errorMessage` | `string \| null` | Yes | Always | Diagnostic error or rate-limit message when `status` is `"RateLimited"`, `"Paused"`, or `"Error"`; `null` otherwise. |
 | `meta` | `object` | No | Always | Diagnostic execution telemetry. |
 | `meta.durationMs` | `integer` | No | Always | Total server-side processing time in milliseconds (excluding FIFO queue wait before execution starts). |
-| `meta.source` | `string` | No | Always | Extraction path used: `"structured"` (`ds:1` JSON hydration), `"dom"` (HTML card fallback), or `"none"`. |
-| `meta.queryUrl` | `string` | No | Always | Full Google Flights search URL navigated by Chromium. |
-| `meta.itineraryCount` | `integer` | No | Always | Length of `itineraries` array. |
-| `meta.rawPayload` | `string` | No | `includeRaw: true` | Truncated raw `ds:1` payload or page HTML snippet (max 51,200 bytes). |
-| `error` | `string` | No | `status` is `"RateLimited"` or `"Error"` | Human-readable diagnostic error message. |
-| `retryAfter` | `string` | No | `status` is `"RateLimited"` | ISO 8601 UTC timestamp indicating when the caller may retry. |
+| `meta.retryAfter` | `string \| null` | Yes | Always | ISO 8601 UTC timestamp indicating when the caller may retry (`"RateLimited"`), or `null` otherwise. |
+| `meta.rawPayload` | `string \| null` | Yes | Always | Truncated raw `GetShoppingResults` / `ds:1` payload snippet (max 51,200 bytes) when `includeRaw: true`, or `null`. |
 
 #### `RouteItinerary` Object Schema
 
@@ -244,9 +248,9 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
 **Request:**
 ```json
 {
-  "origin": ["DFW", "DAL"],
-  "destination": ["JFK", "LGA", "EWR"],
-  "departureDate": "2026-12-15",
+  "origin": ["DCA", "IAD", "BWI"],
+  "destination": ["SFO"],
+  "departureDate": "2026-12-13",
   "cabinClass": "economy",
   "fareTier": "Standard",
   "currency": "USD"
@@ -257,9 +261,10 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
 ```json
 {
   "status": "Success",
-  "provider": "openfarescraper",
+  "price": 219,
   "currency": "USD",
-  "lowestPrice": 219,
+  "leadingAirline": "F9",
+  "leadingFlightNumber": "687",
   "itineraries": [
     {
       "airline": "F9",
@@ -274,7 +279,28 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
       "durationMinutes": 531,
       "stops": 1,
       "isNonstop": false,
-      "layoverAirports": ["DEN"]
+      "layoverAirports": ["DEN"],
+      "maxLayoverMinutes": 59,
+      "legs": [
+        {
+          "airline": "F9",
+          "flightNumber": "687",
+          "origin": "DCA",
+          "destination": "DEN",
+          "departureTime": "2026-12-13 13:40",
+          "arrivalTime": "2026-12-13 15:46",
+          "durationMinutes": 246
+        },
+        {
+          "airline": "F9",
+          "flightNumber": "411",
+          "origin": "DEN",
+          "destination": "SFO",
+          "departureTime": "2026-12-13 16:45",
+          "arrivalTime": "2026-12-13 19:31",
+          "durationMinutes": 226
+        }
+      ]
     },
     {
       "airline": "AS",
@@ -289,72 +315,153 @@ Executes a one-way flight search on Google Flights for a given origin, destinati
       "durationMinutes": 382,
       "stops": 0,
       "isNonstop": true,
-      "layoverAirports": []
+      "layoverAirports": [],
+      "maxLayoverMinutes": null,
+      "legs": [
+        {
+          "airline": "AS",
+          "flightNumber": "1422",
+          "origin": "DCA",
+          "destination": "SFO",
+          "departureTime": "2026-12-13 18:59",
+          "arrivalTime": "2026-12-13 22:21",
+          "durationMinutes": 382
+        }
+      ]
     }
   ],
+  "errorMessage": null,
   "meta": {
     "durationMs": 4120,
-    "source": "structured",
-    "queryUrl": "[https://www.google.com/travel/flights/search?tfs=CBwQAhpCEgoyMDI2LTEyLTEzagcIARIDRENBagcIARIDSUFEagcIARIDQldJcgwIAxIIL20vMGQ2bHBAAUgBcAGYAQI&hl=en&curr=USD](https://www.google.com/travel/flights/search?tfs=CBwQAhpCEgoyMDI2LTEyLTEzagcIARIDRENBagcIARIDSUFEagcIARIDQldJcgwIAxIIL20vMGQ2bHBAAUgBcAGYAQI&hl=en&curr=USD)",
-    "itineraryCount": 2
+    "retryAfter": null,
+    "rawPayload": null
   }
 }
 ```
 
-#### Example B: `200 OK` — `SoldOut`
+#### Example B: `200 OK` — `Success` (Multi-Leg Connecting Itinerary with Codeshare)
+**Request:**
+```json
+{
+  "origin": "DCA",
+  "destination": "RAP",
+  "departureDate": "2027-05-27",
+  "cabinClass": "economy",
+  "fareTier": "Standard",
+  "currency": "USD",
+  "legs": [
+    {
+      "airline": "UA",
+      "flightNumber": "219",
+      "origin": "DCA",
+      "destination": "ORD"
+    },
+    {
+      "airline": "OO",
+      "bookingAirline": "UA",
+      "flightNumber": "5412",
+      "origin": "ORD",
+      "destination": "RAP"
+    }
+  ]
+}
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "status": "Success",
+  "price": 464,
+  "currency": "USD",
+  "leadingAirline": "UA",
+  "leadingFlightNumber": "219",
+  "itineraries": [
+    {
+      "airline": "UA",
+      "airlineName": "United Airlines",
+      "flightNumber": "219",
+      "origin": "DCA",
+      "destination": "RAP",
+      "price": 464,
+      "departureTime": "2027-05-27 08:30",
+      "arrivalTime": "2027-05-27 12:18",
+      "duration": "5h 48m",
+      "durationMinutes": 348,
+      "stops": 1,
+      "isNonstop": false,
+      "layoverAirports": ["ORD"],
+      "maxLayoverMinutes": 72,
+      "legs": [
+        {
+          "airline": "UA",
+          "flightNumber": "219",
+          "origin": "DCA",
+          "destination": "ORD",
+          "departureTime": "2027-05-27 08:30",
+          "arrivalTime": "2027-05-27 09:42",
+          "durationMinutes": 132
+        },
+        {
+          "airline": "OO",
+          "flightNumber": "5412",
+          "origin": "ORD",
+          "destination": "RAP",
+          "departureTime": "2027-05-27 10:54",
+          "arrivalTime": "2027-05-27 12:18",
+          "durationMinutes": 144
+        }
+      ]
+    }
+  ],
+  "errorMessage": null,
+  "meta": {
+    "durationMs": 4891,
+    "retryAfter": null,
+    "rawPayload": null
+  }
+}
+```
+
+#### Example C: `200 OK` — `SoldOut`
 ```json
 {
   "status": "SoldOut",
-  "provider": "openfarescraper",
+  "price": null,
   "currency": "USD",
-  "lowestPrice": null,
+  "leadingAirline": null,
+  "leadingFlightNumber": null,
   "itineraries": [],
+  "errorMessage": null,
   "meta": {
     "durationMs": 3890,
-    "source": "structured",
-    "queryUrl": "[https://www.google.com/travel/flights/search?tfs=](https://www.google.com/travel/flights/search?tfs=)...",
-    "itineraryCount": 0
+    "retryAfter": null,
+    "rawPayload": null
   }
 }
 ```
 
-#### Example C: `400 Bad Request` — Validation Error
+#### Example D: `400 Bad Request` — Validation Error
 ```json
 {
-  "status": "Error",
-  "provider": "openfarescraper",
-  "currency": "USD",
-  "lowestPrice": null,
-  "itineraries": [],
-  "meta": {
-    "durationMs": 2,
-    "source": "none",
-    "queryUrl": "",
-    "itineraryCount": 0
-  },
-  "error": "Validation failed: origin: Must be a 3-letter uppercase IATA airport or metro code"
+  "error": "Airport code must be a 3-letter uppercase IATA code (e.g. DFW).",
+  "issues": [
+    {
+      "code": "invalid_string",
+      "path": ["origin"],
+      "message": "Airport code must be a 3-letter uppercase IATA code (e.g. DFW)."
+    }
+  ]
 }
 ```
 
-#### Example D: `401 Unauthorized` — Invalid or Revoked API Key
+#### Example E: `401 Unauthorized` — Invalid or Revoked API Key
 ```json
 {
-  "status": "Error",
-  "provider": "openfarescraper",
-  "currency": "USD",
-  "lowestPrice": null,
-  "itineraries": [],
-  "meta": {
-    "durationMs": 1,
-    "source": "none",
-    "queryUrl": "",
-    "itineraryCount": 0
-  },
-  "error": "Unauthorized: Invalid or revoked API key"
+  "error": "Unauthorized"
 }
 ```
 
-#### Example E: `429 Too Many Requests` — Quota Exhausted or Circuit Breaker Active
+#### Example F: `429 Too Many Requests` — Quota Exhausted or Circuit Breaker Active
 **Headers:**
 ```http
 HTTP/1.1 429 Too Many Requests
@@ -365,36 +472,35 @@ Content-Type: application/json; charset=utf-8
 ```json
 {
   "status": "RateLimited",
-  "provider": "openfarescraper",
+  "price": null,
   "currency": "USD",
-  "lowestPrice": null,
+  "leadingAirline": null,
+  "leadingFlightNumber": null,
   "itineraries": [],
+  "errorMessage": "Hourly scrape limit reached (20/20).",
   "meta": {
-    "durationMs": 1,
-    "source": "none",
-    "queryUrl": "",
-    "itineraryCount": 0
-  },
-  "error": "Rate limit exceeded: Rolling hourly limit (20 requests/hour) reached",
-  "retryAfter": "2026-11-13T15:00:00.000Z"
+    "durationMs": 0,
+    "retryAfter": "2026-11-13T15:00:00.000Z",
+    "rawPayload": null
+  }
 }
 ```
 
-#### Example F: `502 Bad Gateway` — Upstream Anti-Bot Challenge
+#### Example G: `502 Bad Gateway` — Empty Upstream Payload or Upstream Failure
 ```json
 {
   "status": "Error",
-  "provider": "openfarescraper",
+  "price": null,
   "currency": "USD",
-  "lowestPrice": null,
+  "leadingAirline": null,
+  "leadingFlightNumber": null,
   "itineraries": [],
+  "errorMessage": "Google Flights returned 0 parseable itineraries across 3 attempt(s) without an empty-results notice (shoppingError=false, unfilteredXhrs=0, domStandard=false).",
   "meta": {
-    "durationMs": 6410,
-    "source": "none",
-    "queryUrl": "[https://www.google.com/travel/flights/search?tfs=](https://www.google.com/travel/flights/search?tfs=)...",
-    "itineraryCount": 0
-  },
-  "error": "Google Flights returned an anti-bot CAPTCHA challenge; circuit breaker activated for 60 minutes"
+    "durationMs": 19840,
+    "retryAfter": null,
+    "rawPayload": null
+  }
 }
 ```
 
@@ -405,10 +511,11 @@ Content-Type: application/json; charset=utf-8
 When integrating OpenFareScraper into an external flight tracker (such as [**FlightSentry**](https://github.com/thebronway/FlightSentry)):
 
 1. **Normalize Base URL:** Strip trailing slashes from the user-configured endpoint URL (e.g., `http://openfarescraper:4001`) before appending `/api/v1/health` or `/api/v1/scrape`.
-2. **Pre-Flight Health Gate:** Before invoking `/api/v1/scrape`, call `GET /api/v1/health` with a short timeout (`5,000 ms`). If `circuitBreakerActive === true`, `usage.remainingHour === 0`, or `usage.remainingDay === 0`, skip the scraper immediately and fail over to the next provider without waiting on a `429`.
-3. **Specific Flight vs. Route Searches:**
-   * For **Route Tracking**, omit `airline` and `flightNumber` (optionally pass `includedAirlines` / `excludedAirlines` and `maxStops`). Pick `itineraries[0]` as the lowest fare (since `itineraries` is pre-sorted ascending by `price`).
-   * For **Specific Flight Tracking**, pass both `airline` (e.g., `"UA"`) and `flightNumber` (e.g., `"1492"` or `"UA1492"`). Inspect `itineraries[0]` for that exact flight's fare.
+2. **Pre-Flight Health Gate:** Before invoking `/api/v1/scrape`, call `GET /api/v1/health` with a short timeout (`5,000 ms`). If `paused === true`, `circuitBreakerActive === true`, `rateLimited === true`, `usage.hourlyUsed >= usage.hourlyLimit`, or `usage.dailyUsed >= usage.dailyLimit`, skip the scraper immediately and fail over to the next provider without waiting on a `429` or `503`.
+3. **Route, Single-Flight, and Multi-Leg Searches:**
+   * For **Route Tracking**, omit `airline`, `flightNumber`, and `legs` (optionally pass `includedAirlines` / `excludedAirlines` and `maxStops`). Pick `itineraries[0]` as the lowest fare (since `itineraries` is pre-sorted ascending by `price`).
+   * For **Single-Flight Tracking**, pass both `airline` (e.g., `"UA"`) and `flightNumber` (e.g., `"1492"` or `"UA1492"`). Inspect `itineraries[0]` for that exact flight's fare.
+   * For **Multi-Leg Connecting Tracking** (1 to 3 stops / 2 to 4 segments), pass `legs` with each ordered segment's `airline`, optional `bookingAirline` (for regional/codeshare flights), `flightNumber`, `origin`, and `destination`.
 4. **Multi-Airport Origins/Destinations:** Resolve metropolitan or regional clusters (such as `"WAS"` → `["DCA", "IAD", "BWI"]`) in the caller before calling `/api/v1/scrape`. `itineraries[0].origin` and `itineraries[0].destination` report the exact winning operating airports (`"DCA"`, `"IAD"`, or `"BWI"`).
 
 ### 5.1 Reference TypeScript Adapter
@@ -438,6 +545,14 @@ export interface ScraperHealthResponse {
     dailyLimit: number;
   };
 }
+export interface ScraperLegInput {
+  airline: string;
+  bookingAirline?: string | null;
+  flightNumber: string;
+  origin: string;
+  destination: string;
+}
+
 export interface ScraperQueryRequest {
   origin: string | string[];
   destination: string | string[];
@@ -448,6 +563,7 @@ export interface ScraperQueryRequest {
   maxStops?: number;
   airline?: string;
   flightNumber?: string;
+  legs?: ScraperLegInput[];
   includedAirlines?: string[];
   excludedAirlines?: string[];
   includeRaw?: boolean;
@@ -483,19 +599,17 @@ export interface ScraperItinerary {
 
 export interface ScraperQueryResponse {
   status: 'Success' | 'SoldOut' | 'RateLimited' | 'Paused' | 'Error';
-  provider: 'openfarescraper';
+  price: number | null;
   currency: string;
-  lowestPrice: number | null;
+  leadingAirline: string | null;
+  leadingFlightNumber: string | null;
   itineraries: ScraperItinerary[];
+  errorMessage: string | null;
   meta: {
     durationMs: number;
-    source: 'structured' | 'dom' | 'none';
-    queryUrl: string;
-    itineraryCount: number;
-    rawPayload?: string;
+    retryAfter: string | null;
+    rawPayload: string | null;
   };
-  error?: string;
-  retryAfter?: string;
 }
 
 export class OpenFareScraperClient {
@@ -551,17 +665,17 @@ export class OpenFareScraperClient {
 
     return {
       status: res.status === 429 ? 'RateLimited' : 'Error',
-      provider: 'openfarescraper',
+      price: null,
       currency: params.currency ?? 'USD',
-      lowestPrice: null,
+      leadingAirline: null,
+      leadingFlightNumber: null,
       itineraries: [],
+      errorMessage: `Unexpected HTTP ${res.status} from OpenFareScraper`,
       meta: {
         durationMs: 0,
-        source: 'none',
-        queryUrl: '',
-        itineraryCount: 0,
+        retryAfter: null,
+        rawPayload: null,
       },
-      error: `Unexpected HTTP ${res.status} from OpenFareScraper`,
     };
   }
 }
@@ -575,7 +689,7 @@ export class OpenFareScraperClient {
 openapi: 3.1.0
 info:
   title: OpenFareScraper API
-  version: 0.4.5
+  version: 0.4.8
   description: |
     A Self-hosted headless Chromium Google Flights scraper microservice with a REST API. Built for FlightSentry, compatible flight trackers, and custom API integrations.
   license:
@@ -704,7 +818,7 @@ components:
           enum: ["ready", "rate_limited", "cooldown", "paused"]
         version:
           type: string
-          example: "0.4.5"
+          example: "0.4.8"
         apiVersion:
           type: string
           example: "v1"
@@ -807,22 +921,62 @@ components:
           example: "UA"
         flightNumber:
           type: string
-          pattern: "^[A-Z0-9]{1,8}$"
-          description: Specific flight number filter (e.g., "687" or "UA687"); matches any operating segment in legs
+          pattern: "^[A-Za-z0-9]{1,8}(?:,[A-Za-z0-9]{1,8}){0,3}$"
+          description: Specific flight number filter (e.g., "687" or "UA687") or comma-separated ordered segment list (up to 4 segments)
           example: "687"
+        legs:
+          type: array
+          minItems: 2
+          maxItems: 4
+          description: Contiguous ordered flight segments (2 to 4 legs) for exact multi-stop itinerary matching
+          items:
+            $ref: "#/components/schemas/ScrapeLegInput"
         includedAirlines:
           type: array
+          maxItems: 20
           items:
             type: string
             pattern: "^[A-Z0-9]{2}$"
         excludedAirlines:
           type: array
+          maxItems: 20
           items:
             type: string
             pattern: "^[A-Z0-9]{2}$"
         includeRaw:
           type: boolean
           default: false
+    ScrapeLegInput:
+      type: object
+      required:
+        - airline
+        - flightNumber
+        - origin
+        - destination
+      properties:
+        airline:
+          type: string
+          pattern: "^[A-Z0-9]{2}$"
+          description: Operating 2-character uppercase IATA carrier code
+          example: "OO"
+        bookingAirline:
+          type: ["string", "null"]
+          pattern: "^[A-Z0-9]{2}$"
+          description: Optional marketing/codeshare 2-character uppercase IATA carrier code
+          example: "UA"
+        flightNumber:
+          type: string
+          pattern: "^[A-Za-z0-9]{1,8}$"
+          description: Segment flight designator (with or without carrier prefix)
+          example: "5412"
+        origin:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          example: "ORD"
+        destination:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          example: "RAP"
     RouteItinerary:
       type: object
       required:
@@ -938,53 +1092,50 @@ components:
       type: object
       required:
         - status
-        - provider
+        - price
         - currency
-        - lowestPrice
+        - leadingAirline
+        - leadingFlightNumber
         - itineraries
+        - errorMessage
         - meta
       properties:
         status:
           type: string
           enum: ["Success", "SoldOut", "RateLimited", "Paused", "Error"]
-        provider:
-          type: string
-          enum: ["openfarescraper"]
+        price:
+          type: ["number", "null"]
+          example: 219
         currency:
           type: string
           example: "USD"
-        lowestPrice:
-          type: ["number", "null"]
-          example: 219
+        leadingAirline:
+          type: ["string", "null"]
+          example: "F9"
+        leadingFlightNumber:
+          type: ["string", "null"]
+          example: "687"
         itineraries:
           type: array
           items:
             $ref: "#/components/schemas/RouteItinerary"
+        errorMessage:
+          type: ["string", "null"]
         meta:
           type: object
           required:
             - durationMs
-            - source
-            - queryUrl
-            - itineraryCount
+            - retryAfter
+            - rawPayload
           properties:
             durationMs:
               type: integer
               example: 4120
-            source:
-              type: string
-              enum: ["structured", "dom", "none"]
-            queryUrl:
-              type: string
-            itineraryCount:
-              type: integer
+            retryAfter:
+              type: ["string", "null"]
+              format: date-time
             rawPayload:
-              type: string
-        error:
-          type: string
-        retryAfter:
-          type: string
-          format: date-time
+              type: ["string", "null"]
 ```
 
 ---
@@ -1006,8 +1157,11 @@ components:
 2. **Carrier Name (`airlineName`):** Resolved from Google Flights' `ds:1` leg metadata (`firstLeg[22][3]`) or `summary[1][0]`, falling back to an internal IATA carrier lookup table when extracted via DOM cards.
 3. **Flight Number (`flightNumber`):**
    * Extracted from each segment's `leg[22][1]` as the numeric designator string without carrier prefix (e.g., `"3424"` rather than `"F9 3424"` or `"F93424"`).
-   * When filtering via `ScrapeRequest.flightNumber`, leading carrier prefixes and whitespace are stripped automatically (e.g., `"UA 1492"`, `"UA1492"`, and `"1492"` all normalize to `"1492"`) and matched against **any** operating segment in `itinerary.legs`.
+   * When filtering via `ScrapeRequest.flightNumber`, leading carrier prefixes and whitespace are stripped automatically (e.g., `"UA 1492"`, `"UA1492"`, and `"1492"` all normalize to `"1492"`). Single-token values match against **any** operating segment in `itinerary.legs`; comma-separated lists (2 to 4 tokens, e.g., `"UA219,UA1283"`) match `itinerary.legs` positionally.
    * For multi-segment itineraries (`stops >= 1`), top-level `itinerary.airline` and `itinerary.flightNumber` represent the **first (originating) operating flight segment**, while all segments are exposed in `itinerary.legs`.
+4. **Multi-Leg Segment Matching (`legs[]`):**
+   * Each `ScrapeLegInput` entry normalizes `airline`, optional `bookingAirline`, and `flightNumber` (stripping carrier prefixes and spaces) before comparing against `itinerary.legs[i]`.
+   * A segment matches when `origin`, `destination`, and normalized `flightNumber` match and the scraped segment's operating `airline` equals either `leg.airline` or `leg.bookingAirline`.
 
 ---
 

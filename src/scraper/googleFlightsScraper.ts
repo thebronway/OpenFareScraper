@@ -464,9 +464,22 @@ async function performBrowserScrape(
         }
       }
 
-      const validShoppingCount = enforceBasicExclusion
-        ? postFilterShoppingPayloads.length
-        : allShoppingPayloads.length;
+      const confirmedEmptyResults = await activePage
+        .evaluate(() => {
+          const main = document.querySelector('div[role="main"]');
+          if (!main) return false;
+          if (main.querySelector('ul.Rk10dc > li')) return false;
+          const text = (main as HTMLElement).innerText || '';
+          return /no\s+(?:matching\s+)?(?:flights|results)\s+found|no\s+options\s+match/i.test(
+            text
+          );
+        })
+        .catch(() => false);
+
+      const domStandard = enforceBasicExclusion
+        ? await isStandardEconomyActiveInDom(activePage)
+        : false;
+
       const shouldRetry =
         sawShoppingError ||
         moreXhrFailed ||
@@ -477,6 +490,13 @@ async function performBrowserScrape(
         itineraries: extracted,
         rawPayloads: rawDiagnosticPayloads,
         shouldRetry,
+        confirmedEmptyResults,
+        sawShoppingError,
+        unfilteredShoppingCount: Math.max(
+          0,
+          allShoppingPayloads.length - postFilterShoppingPayloads.length
+        ),
+        domStandard,
       };
     } finally {
       activePage.off('response', onResponse);
@@ -489,6 +509,7 @@ async function performBrowserScrape(
     page.setDefaultNavigationTimeout(HARD_SCRAPE_TIMEOUT_MS);
 
     const maxNavigationAttempts = 3;
+    let primaryAttemptsRun = 1;
     let primaryAttempt = await runNavigationAttempt(
       page,
       targetUrl,
@@ -502,6 +523,7 @@ async function performBrowserScrape(
       primaryAttempt.httpStatus !== 403;
       attempt++
     ) {
+      primaryAttemptsRun = attempt;
       primaryAttempt = await runNavigationAttempt(
         page,
         targetUrl,
@@ -510,10 +532,17 @@ async function performBrowserScrape(
     }
     let itineraries = primaryAttempt.itineraries;
     interceptedPayloads = primaryAttempt.rawPayloads;
+    let confirmedEmptyResults = primaryAttempt.confirmedEmptyResults;
+    let sawShoppingError = primaryAttempt.sawShoppingError;
+    let unfilteredShoppingCount = primaryAttempt.unfilteredShoppingCount;
+    let domStandardConfirmed = primaryAttempt.domStandard;
+    let attemptsRun = primaryAttemptsRun;
 
     if (itineraries.length === 0) {
       const domAllowed =
-        !requireBasicExclusion || (await isStandardEconomyActiveInDom(page));
+        !requireBasicExclusion ||
+        domStandardConfirmed ||
+        (await isStandardEconomyActiveInDom(page));
       if (domAllowed) {
         itineraries = await parseItinerariesFromDom(page, req);
       }
@@ -583,6 +612,11 @@ async function performBrowserScrape(
       );
       itineraries = fallbackAttempt.itineraries;
       interceptedPayloads = fallbackAttempt.rawPayloads;
+      confirmedEmptyResults = fallbackAttempt.confirmedEmptyResults;
+      sawShoppingError = fallbackAttempt.sawShoppingError;
+      unfilteredShoppingCount = fallbackAttempt.unfilteredShoppingCount;
+      domStandardConfirmed = fallbackAttempt.domStandard;
+      attemptsRun += 1;
 
       const fallbackBlockCheck = await inspectForUpstreamBlock(
         page,
@@ -630,10 +664,55 @@ async function performBrowserScrape(
       }
     }
 
+    const rawItineraryCount = itineraries.length;
     const filtered = applyScrapeFilters(itineraries, req);
     const durationMs = Date.now() - startedAt;
 
     if (filtered.length === 0) {
+      if (rawItineraryCount === 0 && !confirmedEmptyResults) {
+        const emptyDiagnostic = `Google Flights returned 0 parseable itineraries across ${attemptsRun} attempt(s) without an empty-results notice (shoppingError=${sawShoppingError}, unfilteredXhrs=${unfilteredShoppingCount}, domStandard=${domStandardConfirmed}).`;
+        const response: ScrapeResponse = {
+          status: 'Error',
+          price: null,
+          currency: req.currency,
+          leadingAirline: null,
+          leadingFlightNumber: null,
+          itineraries: [],
+          errorMessage: emptyDiagnostic,
+          meta: {
+            durationMs,
+            retryAfter: null,
+            rawPayload: req.includeRaw
+              ? truncateRawPayload(interceptedPayloads)
+              : null,
+          },
+        };
+
+        insertScrapeLog({
+          apiKeyId,
+          route: routeLabel,
+          flightNumber: flightLabel,
+          departureDate: req.departureDate,
+          cabinClass: req.cabinClass,
+          fareTier: req.fareTier,
+          status: 'Error',
+          statusCode: 502,
+          itineraryCount: 0,
+          lowestPrice: null,
+          currency: req.currency,
+          errorMessage: emptyDiagnostic,
+          durationMs,
+          queriedAt: new Date().toISOString(),
+        });
+
+        return { httpStatus: 502, response };
+      }
+
+      const soldOutDiagnostic =
+        rawItineraryCount > 0
+          ? `0 of ${rawItineraryCount} route itineraries matched request filters.`
+          : 'Google Flights confirmed no matching flights for route/date.';
+
       const response: ScrapeResponse = {
         status: 'SoldOut',
         price: null,
@@ -663,7 +742,7 @@ async function performBrowserScrape(
         itineraryCount: 0,
         lowestPrice: null,
         currency: req.currency,
-        errorMessage: null,
+        errorMessage: soldOutDiagnostic,
         durationMs,
         queriedAt: new Date().toISOString(),
       });

@@ -32,14 +32,32 @@ export async function isStandardEconomyActiveInDom(
     .evaluate(() => {
       const candidates = Array.from(
         document.querySelectorAll(
-          'button, [role="combobox"], [role="button"], [aria-pressed="true"], [aria-selected="true"]'
+          'button, [role="combobox"], [role="button"], [aria-pressed="true"], [aria-selected="true"], [aria-checked="true"]'
         )
       );
 
       for (const el of candidates) {
+        if (
+          el.getAttribute('aria-selected') === 'false' ||
+          el.getAttribute('aria-checked') === 'false'
+        ) {
+          continue;
+        }
+
+        const isExplicitlySelected =
+          el.getAttribute('aria-selected') === 'true' ||
+          el.getAttribute('aria-checked') === 'true';
         const htmlEl = el as HTMLElement;
-        if (htmlEl.offsetParent === null) continue;
-        const text = `${htmlEl.innerText || ''} ${el.getAttribute('aria-label') || ''}`;
+        const isRendered =
+          htmlEl.offsetParent !== null || htmlEl.getClientRects().length > 0;
+
+        if (!isExplicitlySelected && !isRendered) {
+          continue;
+        }
+
+        const text = `${htmlEl.innerText || el.textContent || ''} ${
+          el.getAttribute('aria-label') || ''
+        } ${el.getAttribute('title') || ''}`;
         if (/exclude\s+basic/i.test(text)) {
           return true;
         }
@@ -66,6 +84,8 @@ export async function ensureStandardEconomyFilterActive(
     const cabinTriggers = [
       page.locator('[role="combobox"][aria-label*="cabin" i]').first(),
       page.locator('button[aria-label*="cabin" i]').first(),
+      page.locator('[role="combobox"][aria-label*="seating" i]').first(),
+      page.locator('button[aria-label*="seating" i]').first(),
       page.locator('[role="combobox"]').filter({ hasText: /^\s*Economy\s*$/i }).first(),
       page.locator('button').filter({ hasText: /^\s*Economy\s*$/i }).first(),
     ];

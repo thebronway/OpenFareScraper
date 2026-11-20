@@ -1,9 +1,14 @@
 # OpenFareScraper Changelog
 
-*Last updated: 2026-11-18*  
-*Current Version: v0.4.7*
+*Last updated: 2026-11-19*  
+*Current Version: v0.4.8*
 
 ## Changelog
+
+### Release v0.4.8
+- Returned `Error` (`HTTP 502`) with diagnostic details instead of `SoldOut` (`HTTP 200`) when Google Flights returns 0 parseable itineraries without an empty-results notice.
+- Expanded `isStandardEconomyActiveInDom` and cabin trigger selectors in `fareTierGuard.ts` to recognize `aria-selected`/`aria-checked` and `"seating"` labels.
+- Updated `docs/API_SPEC.MD` and the OpenAPI 3.1.0 schema with multi-leg `legs[]` (`ScrapeLegInput`), `bookingAirline`, multi-segment `flightNumber` filtering, and `ScrapeResponse` fields.
 
 ### Release v0.4.7
 - Added Multi-stop itinerary extraction and matching for 1-stop, 2-stop, and 3-stop flights (up to 4 legs) via `legs[]` or multi-segment `flightNumber` values (e.g., `"UA219/UA1283/UA669"`).
