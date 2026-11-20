@@ -76,13 +76,13 @@ export const togglePauseSchema = z.object({
 
 export const updateSettingsSchema = z
   .object({
-    minJitterMs: z.number().int().min(500).max(60000),
-    maxJitterMs: z.number().int().min(500).max(120000),
-    settleDelayMs: z.number().int().min(500).max(30000),
-    maxRequestsPerHour: z.number().int().min(1).max(500),
-    maxRequestsPerDay: z.number().int().min(1).max(5000),
-    cooldownMinutes: z.number().int().min(1).max(1440),
-    browserRecycleScrapes: z.number().int().min(10).max(1000).default(100),
+    minJitterMs: z.number().int().min(500).max(60000).optional(),
+    maxJitterMs: z.number().int().min(500).max(120000).optional(),
+    settleDelayMs: z.number().int().min(500).max(30000).optional(),
+    maxRequestsPerHour: z.number().int().min(1).max(500).optional(),
+    maxRequestsPerDay: z.number().int().min(1).max(5000).optional(),
+    cooldownMinutes: z.number().int().min(1).max(1440).optional(),
+    browserRecycleScrapes: z.number().int().min(10).max(1000).optional(),
     proxyUrl: z
       .string()
       .trim()
@@ -100,14 +100,26 @@ export const updateSettingsSchema = z
       .optional(),
     confirmNewPassword: z.string().max(128).optional(),
   })
-  .refine((data) => data.maxJitterMs >= data.minJitterMs, {
-    message: 'Max jitter must be greater than or equal to min jitter.',
-    path: ['maxJitterMs'],
-  })
-  .refine((data) => data.maxRequestsPerDay >= data.maxRequestsPerHour, {
-    message: 'Daily limit must be greater than or equal to hourly limit.',
-    path: ['maxRequestsPerDay'],
-  })
+  .refine(
+    (data) =>
+      data.minJitterMs === undefined ||
+      data.maxJitterMs === undefined ||
+      data.maxJitterMs >= data.minJitterMs,
+    {
+      message: 'Max jitter must be greater than or equal to min jitter.',
+      path: ['maxJitterMs'],
+    }
+  )
+  .refine(
+    (data) =>
+      data.maxRequestsPerHour === undefined ||
+      data.maxRequestsPerDay === undefined ||
+      data.maxRequestsPerDay >= data.maxRequestsPerHour,
+    {
+      message: 'Daily limit must be greater than or equal to hourly limit.',
+      path: ['maxRequestsPerDay'],
+    }
+  )
   .refine(
     (data) => {
       if (!data.newPassword) return true;

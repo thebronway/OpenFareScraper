@@ -1,9 +1,15 @@
 # OpenFareScraper Changelog
 
 *Last updated: 2026-11-19*  
-*Current Version: v0.4.8*
+*Current Version: v0.4.9*
 
 ## Changelog
+
+### Release v0.4.9
+- Aligned UI shell, navigation, buttons, and semantic status tokens with `DESIGN_GUIDE.md`.
+- Split the admin UI into `/login`, `/dashboard`, and URL-routed `/settings` tabs (`/settings/general`, `/settings/guardrails`, `/settings/security`) with server-side session checks.
+- Redesigned `/settings/guardrails` with dedicated pacing, rate-limit, and browser-lifecycle cards.
+- Migrated API documentation to `/api-docs` with interactive request testing and `GET /api/v1/openapi.json`, and removed `docs/API_SPEC.MD`.
 
 ### Release v0.4.8
 - Returned `Error` (`HTTP 502`) with diagnostic details instead of `SoldOut` (`HTTP 200`) when Google Flights returns 0 parseable itineraries without an empty-results notice.

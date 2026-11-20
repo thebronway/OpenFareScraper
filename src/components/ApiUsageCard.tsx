@@ -1,6 +1,7 @@
 'use client';
 
-import { BarChart3, Info } from 'lucide-react';
+import Link from 'next/link';
+import { BarChart3, Info, KeyRound } from 'lucide-react';
 import Tooltip from '@/components/common/Tooltip';
 import type { OverallApiKeyUsage } from '@/types';
 
@@ -11,26 +12,32 @@ interface ApiUsageCardProps {
 export function ApiUsageCard({ usage }: ApiUsageCardProps) {
   return (
     <section className="bg-gunmetal-card border border-gunmetal-border rounded-lg shadow-sm p-4 sm:p-5 transition-colors">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-slate-300" />
-          <h2 className="text-sm font-bold text-slate-200">
+          <h3 className="text-sm font-bold text-slate-100">
             Overall API Key Usage
-          </h2>
+          </h3>
+          <Tooltip
+            content="Aggregated authenticated scrape volume across all API keys (excludes admin test scrapes and 429 rate-limit rejections)"
+            position="top"
+          >
+            <span
+              tabIndex={0}
+              className="inline-flex items-center gap-1 text-xs font-mono text-gunmetal-muted cursor-help"
+            >
+              <Info className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+            </span>
+          </Tooltip>
         </div>
 
-        <Tooltip
-          content="Aggregated authenticated scrape volume across all API keys (excludes admin test scrapes and 429 rate-limit rejections)"
-          position="top"
+        <Link
+          href="/settings/security"
+          className="min-h-[44px] sm:min-h-[36px] px-3 py-1.5 rounded-md text-xs inline-flex items-center justify-center gap-1.5 bg-gunmetal-canvas hover:bg-gunmetal-border border border-gunmetal-border text-slate-300 hover:text-white font-semibold transition-colors"
         >
-          <span
-            tabIndex={0}
-            className="inline-flex items-center gap-1 text-xs font-mono text-gunmetal-muted cursor-help"
-          >
-            <span>All Keys</span>
-            <Info className="h-3 w-3 text-slate-400 flex-shrink-0" />
-          </span>
-        </Tooltip>
+          <KeyRound className="h-3.5 w-3.5 text-sky-400" />
+          <span>Manage Keys</span>
+        </Link>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -74,7 +81,7 @@ export function ApiUsageCard({ usage }: ApiUsageCardProps) {
             {usage.revokedKeys > 0 && (
               <>
                 <span className="text-gunmetal-border">•</span>
-                <span className="text-sm font-mono font-medium text-red-400">
+                <span className="text-sm font-mono font-medium text-rose-400">
                   {usage.revokedKeys}
                 </span>
                 <span className="text-xs text-gunmetal-muted">revoked</span>

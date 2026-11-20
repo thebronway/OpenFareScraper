@@ -8,8 +8,7 @@
   }
 
   body {
-    background-color: #1c1c1e;
-    color: #f1f5f9;
+    @apply bg-gunmetal-canvas text-gunmetal-muted;
   }
 }
 

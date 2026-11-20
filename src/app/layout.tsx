@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { ThemeProvider } from 'next-themes';
+import { Footer } from '@/components/Footer';
+import { Navbar } from '@/components/Navbar';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -24,9 +26,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className="bg-gunmetal-canvas text-slate-100 antialiased min-h-screen flex flex-col font-sans">
+      <body className="bg-gunmetal-canvas text-gunmetal-muted antialiased min-h-screen flex flex-col font-sans">
         <ThemeProvider attribute="class" forcedTheme="dark">
-          {children}
+          <Navbar />
+          <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {children}
+          </main>
+          <Footer />
         </ThemeProvider>
       </body>
     </html>

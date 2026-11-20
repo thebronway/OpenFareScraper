@@ -46,7 +46,7 @@ export function Footer() {
             target="_blank"
             rel="noopener noreferrer"
             title="Developer's Website & Projects"
-            className="hover:text-emerald-500 transition-colors flex items-center gap-1.5 font-medium"
+            className="hover:text-emerald-400 transition-colors flex items-center gap-1.5 font-medium"
           >
             <Globe className="w-4 h-4" />
             <span>Developer&apos;s Website</span>
@@ -55,7 +55,7 @@ export function Footer() {
             href="https://github.com/thebronway/OpenFareScraper/issues"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-purple-500 transition-colors flex items-center gap-1.5 font-medium"
+            className="hover:text-purple-400 transition-colors flex items-center gap-1.5 font-medium"
           >
             <Github className="w-4 h-4" />
             <span>Report An Issue</span>
@@ -64,7 +64,7 @@ export function Footer() {
             href="https://buymeacoffee.com/brianconway"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-yellow-500 transition-colors flex items-center gap-1.5 font-medium"
+            className="hover:text-amber-400 transition-colors flex items-center gap-1.5 font-medium"
           >
             <Coffee className="w-4 h-4" />
             <span>Support OpenFareScraper</span>
@@ -74,3 +74,5 @@ export function Footer() {
     </footer>
   );
 }
+
+export default Footer;

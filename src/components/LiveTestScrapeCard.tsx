@@ -77,22 +77,24 @@ export function LiveTestScrapeCard({
         </span>
       </div>
 
-      <form onSubmit={handleRunTest} className="space-y-3 text-xs">
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
+      <form onSubmit={handleRunTest} className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           <div>
-            <label className="block text-gunmetal-muted mb-1">Origin</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+              Origin
+            </label>
             <input
               type="text"
               required
               value={origin}
               onChange={(e) => setOrigin(e.target.value.toUpperCase())}
               placeholder="DCA"
-              className="w-full px-2.5 py-1.5 rounded-lg bg-gunmetal-canvas border border-gunmetal-border text-slate-100 uppercase"
+              className="w-full min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-md bg-gunmetal-canvas border border-gunmetal-border text-slate-100 placeholder-zinc-500 text-sm uppercase focus:outline-none focus:border-slate-500"
             />
           </div>
 
           <div>
-            <label className="block text-gunmetal-muted mb-1">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
               Destination
             </label>
             <input
@@ -101,27 +103,31 @@ export function LiveTestScrapeCard({
               value={destination}
               onChange={(e) => setDestination(e.target.value.toUpperCase())}
               placeholder="LAX"
-              className="w-full px-2.5 py-1.5 rounded-lg bg-gunmetal-canvas border border-gunmetal-border text-slate-100 uppercase"
+              className="w-full min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-md bg-gunmetal-canvas border border-gunmetal-border text-slate-100 placeholder-zinc-500 text-sm uppercase focus:outline-none focus:border-slate-500"
             />
           </div>
 
           <div>
-            <label className="block text-gunmetal-muted mb-1">Date</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+              Date
+            </label>
             <input
               type="date"
               required
               value={departureDate}
               onChange={(e) => setDepartureDate(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-lg bg-gunmetal-canvas border border-gunmetal-border text-slate-100"
+              className="w-full min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-md bg-gunmetal-canvas border border-gunmetal-border text-slate-100 text-sm focus:outline-none focus:border-slate-500"
             />
           </div>
 
           <div>
-            <label className="block text-gunmetal-muted mb-1">Cabin</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+              Cabin
+            </label>
             <select
               value={cabinClass}
               onChange={(e) => setCabinClass(e.target.value as CabinClass)}
-              className="w-full px-2.5 py-1.5 rounded-lg bg-gunmetal-canvas border border-gunmetal-border text-slate-100"
+              className="w-full min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-md bg-gunmetal-canvas border border-gunmetal-border text-slate-200 text-sm focus:outline-none focus:border-slate-500 cursor-pointer"
             >
               <option value="economy">Economy</option>
               <option value="premium_economy">Premium Econ</option>
@@ -131,11 +137,13 @@ export function LiveTestScrapeCard({
           </div>
 
           <div>
-            <label className="block text-gunmetal-muted mb-1">Fare Tier</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+              Fare Tier
+            </label>
             <select
               value={fareTier}
               onChange={(e) => setFareTier(e.target.value as FareTier)}
-              className="w-full px-2.5 py-1.5 rounded-lg bg-gunmetal-canvas border border-gunmetal-border text-slate-100"
+              className="w-full min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-md bg-gunmetal-canvas border border-gunmetal-border text-slate-200 text-sm focus:outline-none focus:border-slate-500 cursor-pointer"
             >
               <option value="Standard">Standard</option>
               <option value="Basic">Basic</option>
@@ -143,14 +151,16 @@ export function LiveTestScrapeCard({
           </div>
 
           <div>
-            <label className="block text-gunmetal-muted mb-1">Currency</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+              Currency
+            </label>
             <input
               type="text"
               maxLength={3}
               required
               value={currency}
               onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-              className="w-full px-2.5 py-1.5 rounded-lg bg-gunmetal-canvas border border-gunmetal-border text-slate-100 uppercase"
+              className="w-full min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-md bg-gunmetal-canvas border border-gunmetal-border text-slate-100 placeholder-zinc-500 text-sm uppercase focus:outline-none focus:border-slate-500"
             />
           </div>
         </div>
@@ -159,14 +169,14 @@ export function LiveTestScrapeCard({
           <button
             type="submit"
             disabled={running || globalPaused}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg font-medium bg-slate-100 text-zinc-950 hover:bg-white disabled:opacity-50 transition-colors"
+            className="min-h-[44px] sm:min-h-[38px] px-4 py-2 rounded-lg text-xs sm:text-sm inline-flex items-center justify-center gap-1.5 bg-slate-800/75 hover:bg-slate-700/85 border border-slate-500/80 hover:border-slate-400 text-slate-100 hover:text-white font-semibold shadow-sm transition-colors disabled:opacity-45 disabled:pointer-events-none cursor-pointer"
           >
             <Play className="h-3.5 w-3.5" />
             {running ? 'Scraping Google Flights...' : 'Run Live Scrape'}
           </button>
 
           {globalPaused && (
-            <span className="text-xs text-orange-300">
+            <span className="text-xs text-amber-300">
               Scraper is globally paused. Resume the engine above to run a live
               test scrape.
             </span>
@@ -175,7 +185,7 @@ export function LiveTestScrapeCard({
       </form>
 
       {error && (
-        <div className="mt-4 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+        <div className="mt-4 text-xs text-rose-200 bg-rose-950/45 border border-rose-700/70 rounded-md px-3 py-2">
           {error}
         </div>
       )}
@@ -199,7 +209,7 @@ export function LiveTestScrapeCard({
           </div>
 
           {result.errorMessage && (
-            <p className="text-red-300">{result.errorMessage}</p>
+            <p className="text-rose-300">{result.errorMessage}</p>
           )}
 
           {result.itineraries.length > 0 && (

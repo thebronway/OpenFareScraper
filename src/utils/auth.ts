@@ -74,11 +74,30 @@ export function verifySessionToken(
   return crypto.timingSafeEqual(sigBuffer, expectedBuffer);
 }
 
-export function isAdminAuthenticated(req: NextRequest): boolean {
+export function isAdminSessionValid(token: string | undefined): boolean {
   const settings = getSettings();
   if (!settings.adminPasswordHash) return false;
-  const token = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
   return verifySessionToken(token, settings.sessionSecret);
+}
+
+export function isAdminAuthenticated(req: NextRequest): boolean {
+  return isAdminSessionValid(req.cookies.get(ADMIN_COOKIE_NAME)?.value);
+}
+
+export function sanitizeRedirectPath(
+  rawPath: string | null | undefined,
+  fallback = '/dashboard'
+): string {
+  if (!rawPath) return fallback;
+  const trimmed = rawPath.trim();
+  if (
+    !trimmed.startsWith('/') ||
+    trimmed.startsWith('//') ||
+    trimmed.startsWith('/\\')
+  ) {
+    return fallback;
+  }
+  return trimmed;
 }
 
 export function attachSessionCookie(

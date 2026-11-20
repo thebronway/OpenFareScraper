@@ -72,14 +72,33 @@ export async function PUT(req: NextRequest) {
     updateAdminPassword(newHash, rotatedSecret);
   }
 
+  const resolvedMinJitter = data.minJitterMs ?? current.minJitterMs;
+  const resolvedMaxJitter = data.maxJitterMs ?? current.maxJitterMs;
+  if (resolvedMaxJitter < resolvedMinJitter) {
+    return NextResponse.json(
+      { error: 'Max jitter must be greater than or equal to min jitter.' },
+      { status: 400 }
+    );
+  }
+
+  const resolvedHourly = data.maxRequestsPerHour ?? current.maxRequestsPerHour;
+  const resolvedDaily = data.maxRequestsPerDay ?? current.maxRequestsPerDay;
+  if (resolvedDaily < resolvedHourly) {
+    return NextResponse.json(
+      { error: 'Daily limit must be greater than or equal to hourly limit.' },
+      { status: 400 }
+    );
+  }
+
   updateGuardrails({
-    minJitterMs: data.minJitterMs,
-    maxJitterMs: data.maxJitterMs,
-    settleDelayMs: data.settleDelayMs,
-    maxRequestsPerHour: data.maxRequestsPerHour,
-    maxRequestsPerDay: data.maxRequestsPerDay,
-    cooldownMinutes: data.cooldownMinutes,
-    browserRecycleScrapes: data.browserRecycleScrapes,
+    minJitterMs: resolvedMinJitter,
+    maxJitterMs: resolvedMaxJitter,
+    settleDelayMs: data.settleDelayMs ?? current.settleDelayMs,
+    maxRequestsPerHour: resolvedHourly,
+    maxRequestsPerDay: resolvedDaily,
+    cooldownMinutes: data.cooldownMinutes ?? current.cooldownMinutes,
+    browserRecycleScrapes:
+      data.browserRecycleScrapes ?? current.browserRecycleScrapes,
     proxyUrl: data.proxyUrl,
   });
 

@@ -4,6 +4,7 @@ import {
   getSettings,
   setInitialAdminPassword,
 } from '@/db/settings';
+import { getUsageStats } from '@/scraper/rateLimiter';
 import {
   attachSessionCookie,
   checkLoginRateLimit,
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
     hasAdminPassword,
     authenticated,
     settings: authenticated ? getPublicSettings() : null,
+    usage: authenticated ? getUsageStats() : null,
   });
 }
 

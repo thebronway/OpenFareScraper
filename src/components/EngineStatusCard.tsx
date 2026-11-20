@@ -1,14 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  Activity,
-  AlertTriangle,
-  Pause,
-  PauseCircle,
-  Play,
-  RotateCcw,
-} from 'lucide-react';
+import { Activity, AlertTriangle, Pause, PauseCircle, Play, RotateCcw } from 'lucide-react';
 import type { PublicScraperSettings, UsageQuotaStats } from '@/types';
 
 interface EngineStatusCardProps {
@@ -54,67 +47,67 @@ export function EngineStatusCard({
         : 'Ready';
 
   const engineCardBorder = settings.globalPaused
-    ? 'border-orange-500/40'
+    ? 'border-amber-500/40'
     : settings.circuitBreakerActive
       ? 'border-amber-500/40'
       : isRateLimited
-        ? 'border-red-500/40'
+        ? 'border-rose-500/40'
         : 'border-emerald-500/30';
 
   const engineStatusDotColor = settings.globalPaused
-    ? 'bg-orange-400'
+    ? 'bg-amber-400'
     : settings.circuitBreakerActive
       ? 'bg-amber-400'
       : isRateLimited
-        ? 'bg-red-400'
+        ? 'bg-rose-400'
         : 'bg-emerald-400';
 
   const engineStatusTextColor = settings.globalPaused
-    ? 'text-orange-400'
+    ? 'text-amber-300'
     : settings.circuitBreakerActive
       ? 'text-amber-300'
       : isRateLimited
-        ? 'text-red-400'
+        ? 'text-rose-300'
         : 'text-emerald-300';
 
   const hourlyBarColor = settings.globalPaused
-    ? 'bg-orange-500'
+    ? 'bg-amber-600'
     : settings.circuitBreakerActive
       ? 'bg-amber-600'
       : hourlyPct >= 90
-        ? 'bg-red-500'
+        ? 'bg-rose-500'
         : hourlyPct >= 75
-          ? 'bg-yellow-400'
+          ? 'bg-amber-400'
           : 'bg-sky-500';
 
   const hourlyUsedColor = settings.globalPaused
-    ? 'text-orange-400'
+    ? 'text-amber-300'
     : settings.circuitBreakerActive
       ? 'text-slate-200'
       : hourlyPct >= 90
-        ? 'text-red-400'
+        ? 'text-rose-400'
         : hourlyPct >= 75
-          ? 'text-yellow-300'
+          ? 'text-amber-300'
           : 'text-slate-200';
 
   const dailyBarColor = settings.globalPaused
-    ? 'bg-orange-500'
+    ? 'bg-amber-600'
     : settings.circuitBreakerActive
       ? 'bg-amber-600'
       : dailyPct >= 90
-        ? 'bg-red-500'
+        ? 'bg-rose-500'
         : dailyPct >= 75
-          ? 'bg-yellow-400'
+          ? 'bg-amber-400'
           : 'bg-sky-500';
 
   const dailyUsedColor = settings.globalPaused
-    ? 'text-orange-400'
+    ? 'text-amber-300'
     : settings.circuitBreakerActive
       ? 'text-slate-200'
       : dailyPct >= 90
-        ? 'text-red-400'
+        ? 'text-rose-400'
         : dailyPct >= 75
-          ? 'text-yellow-300'
+          ? 'text-amber-300'
           : 'text-slate-200';
 
   async function handleToggleGlobalPause() {
@@ -163,7 +156,7 @@ export function EngineStatusCard({
     <section
       className={`bg-gunmetal-card border rounded-lg shadow-sm p-4 sm:p-5 transition-colors ${
         settings.globalPaused
-          ? 'border-orange-500/40'
+          ? 'border-amber-500/40'
           : 'border-gunmetal-border'
       }`}
     >
@@ -171,27 +164,27 @@ export function EngineStatusCard({
         <div className="flex items-center gap-2.5">
           <Activity
             className={`h-4 w-4 ${
-              settings.globalPaused ? 'text-orange-400' : 'text-slate-300'
+              settings.globalPaused ? 'text-amber-400' : 'text-slate-300'
             }`}
           />
-          <h2 className="text-sm font-bold text-slate-200">
-            Engine Status & Circuit Breaker
-          </h2>
+          <h3 className="text-sm font-bold text-slate-100">
+            Engine Status &amp; Circuit Breaker
+          </h3>
         </div>
 
         <button
           type="button"
           onClick={handleToggleGlobalPause}
           disabled={togglingPause}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-50 transition-colors ${
+          className={`min-h-[44px] sm:min-h-[36px] px-3 py-1.5 rounded-md text-xs inline-flex items-center justify-center gap-1.5 font-semibold border transition-colors disabled:opacity-45 disabled:pointer-events-none cursor-pointer ${
             settings.globalPaused
-              ? 'bg-orange-500 border-orange-400 text-zinc-950 hover:bg-orange-400'
-              : 'bg-gunmetal-canvas border-gunmetal-border text-slate-200 hover:bg-zinc-800'
+              ? 'bg-emerald-950/60 hover:bg-emerald-900/75 border-emerald-700/80 text-emerald-200 hover:text-white'
+              : 'bg-gunmetal-canvas hover:bg-gunmetal-border border-gunmetal-border text-slate-300 hover:text-white'
           }`}
         >
           {settings.globalPaused ? (
             <>
-              <Play className="h-3.5 w-3.5" />
+              <Play className="h-3.5 w-3.5 text-emerald-400" />
               {togglingPause ? 'Resuming...' : 'Resume Scraping'}
             </>
           ) : (
@@ -204,13 +197,13 @@ export function EngineStatusCard({
       </div>
 
       {settings.globalPaused && (
-        <div className="mb-4 p-3.5 rounded-lg bg-orange-500/10 border border-orange-500/30 flex items-start gap-2.5">
-          <PauseCircle className="h-4 w-4 text-orange-400 shrink-0 mt-0.5" />
+        <div className="mb-4 p-3.5 rounded-lg bg-amber-950/35 border border-amber-700/70 flex items-start gap-2.5">
+          <PauseCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
           <div className="text-xs">
-            <p className="font-semibold text-orange-200">
+            <p className="font-semibold text-amber-200">
               Global Pause Active — All Scraping Halted
             </p>
-            <p className="text-orange-300/90 mt-0.5">
+            <p className="text-amber-200/85 mt-0.5 leading-relaxed">
               Incoming API and test scrapes are paused (HTTP 503) without
               consuming rolling quota.
               {settings.globalPausedAt && (
@@ -229,14 +222,14 @@ export function EngineStatusCard({
       )}
 
       {settings.circuitBreakerActive && (
-        <div className="mb-4 p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="mb-4 p-3.5 rounded-lg bg-amber-950/35 border border-amber-700/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
             <div className="text-xs">
               <p className="font-semibold text-amber-200">
                 Circuit Breaker Active — Scraping Paused
               </p>
-              <p className="text-amber-300/90 mt-0.5">
+              <p className="text-amber-200/85 mt-0.5 leading-relaxed">
                 {settings.circuitBreakerReason || 'Upstream rate limit detected.'}
                 {settings.circuitBreakerUntil && (
                   <>
@@ -256,16 +249,16 @@ export function EngineStatusCard({
             type="button"
             onClick={handleResetCooldown}
             disabled={resetting}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-400 text-zinc-950 hover:bg-amber-300 disabled:opacity-50 shrink-0 transition-colors"
+            className="min-h-[44px] sm:min-h-[36px] px-3 py-1.5 rounded-md text-xs inline-flex items-center justify-center gap-1.5 font-semibold bg-amber-950/60 hover:bg-amber-900/75 border border-amber-700/80 text-amber-200 hover:text-white disabled:opacity-45 disabled:pointer-events-none shrink-0 transition-colors cursor-pointer"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            <RotateCcw className="h-3.5 w-3.5 text-amber-400" />
             {resetting ? 'Resetting...' : 'Reset Cooldown'}
           </button>
         </div>
       )}
 
       {error && (
-        <div className="mb-4 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+        <div className="mb-4 text-xs text-rose-200 bg-rose-950/45 border border-rose-700/70 rounded-md px-3 py-2">
           {error}
         </div>
       )}
